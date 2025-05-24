@@ -4,8 +4,8 @@
  */
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
-	"name": "honory",
-	"main": "src/index.ts",
+	"name": "honori",
+	"main": "src/index.tsx",
 	"compatibility_date": "2025-05-23",
 	"assets": {
 		"binding": "ASSETS",
