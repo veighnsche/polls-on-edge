@@ -1,80 +1,46 @@
 import { Hono } from "hono";
-import type { FC } from "hono/jsx";
-import { useState } from "hono/jsx";
 import { showRoutes } from "hono/dev";
+import { LandingPage } from "./components/LandingPage";
+import { Layout } from "./components/Layout";
+import { anonJwtCookie } from "./middleware/anonJwtCookie";
+import { CreatePage } from "./components/CreatePage";
 
 const app = new Hono();
 
-const Layout: FC = (props) => {
-  return (
-    <html>
-      <head>
-        <meta charSet="utf-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <title>Honori</title>
-        <link rel="stylesheet" href="/dist/styles.css" />
-      </head>
-      <body className="min-h-screen bg-background text-foreground">
-        <header className="py-6 shadow-md mb-8 bg-primary">
-          <h1 className="text-3xl font-bold text-center tracking-wide text-primary-foreground">Honori</h1>
-        </header>
-        <main className="max-w-xl mx-auto px-4">{props.children}</main>
-      </body>
-    </html>
-  );
-};
+// Custom cookie middleware
+// ---
+// Hono App: Anonymous JWT Auth & Cookie Middleware
+// ---
+// This app ensures that every request has an anonymous JWT stored in an HttpOnly cookie.
+// The JWT is created and set automatically if missing or invalid. All cookie parsing and
+// JWT logic is handled in a single, well-documented middleware (see ./middleware/anonJwtCookie.ts).
+// ---
 
-const Top: FC<{ messages: string[] }> = (props: { messages: string[] }) => {
-  const [count, setCount] = useState(0);
-  return (
+// Register the consolidated cookie/JWT middleware for all routes
+app.use("*", anonJwtCookie);
+
+/**
+ * Main route: renders the landing page inside the main layout.
+ * The anonymous JWT logic above ensures all users have a valid JWT cookie before this handler runs.
+ */
+app.get("/", (c) =>
+  c.html(
     <Layout>
-      <section className="rounded-xl shadow p-8 flex flex-col items-center bg-card">
-        <h1 className="text-2xl font-semibold mb-4 text-primary">Hello Hono!</h1>
-        <div className="flex flex-col items-center mb-6">
-          <h2 className="text-lg font-medium mb-2">
-            Counter: <span className="font-mono text-primary">{count}</span>
-          </h2>
-          <div className="flex gap-4">
-            <button
-              type="button"
-              className="w-10 h-10 rounded-full text-xl font-bold shadow transition bg-destructive text-destructive-foreground"
-              onClick={() => setCount(count - 1)}
-              aria-label="Decrement"
-            >
-              -
-            </button>
-            <button
-              type="button"
-              className="w-10 h-10 rounded-full text-xl font-bold shadow transition bg-accent text-accent-foreground"
-              onClick={() => setCount(count + 1)}
-              aria-label="Increment"
-            >
-              +
-            </button>
-          </div>
-        </div>
-        <ul className="w-full mt-4 space-y-2">
-          {props.messages.map((message, i) => (
-            <li
-              key={i}
-              className="rounded px-4 py-2 font-medium shadow-sm bg-secondary text-secondary-foreground"
-            >
-              {message}!!
-            </li>
-          ))}
-        </ul>
-      </section>
+      <LandingPage />
     </Layout>
-  );
-};
+  )
+);
 
-app.get("/", (c) => {
-  const messages = ["Good Morning", "Good Evening", "Good Night"];
-  return c.html(<Top messages={messages} />);
-});
+// Create route
+app.get("/create", (c) =>
+  c.html(
+    <Layout>
+      <CreatePage />
+    </Layout>
+  )
+);
 
-showRoutes(app, {
-  verbose: true,
-});
+// Show all registered routes for development/debugging
+showRoutes(app, { verbose: true });
 
 export default app;
