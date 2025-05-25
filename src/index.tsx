@@ -4,25 +4,15 @@ import { LandingPage } from "./components/LandingPage";
 import { Layout } from "./components/Layout";
 import { anonJwtCookie } from "./middleware/anonJwtCookie";
 import { CreatePage } from "./components/CreatePage";
+import { PollData, PollPage } from "./components/PollPage";
 
-const app = new Hono();
+export { PollDurableObject } from "./PollDurableObject";
 
-// Custom cookie middleware
-// ---
-// Hono App: Anonymous JWT Auth & Cookie Middleware
-// ---
-// This app ensures that every request has an anonymous JWT stored in an HttpOnly cookie.
-// The JWT is created and set automatically if missing or invalid. All cookie parsing and
-// JWT logic is handled in a single, well-documented middleware (see ./middleware/anonJwtCookie.ts).
-// ---
+type Bindings = { POLLS: DurableObjectNamespace };
+const app = new Hono<{ Bindings: Bindings }>();
 
-// Register the consolidated cookie/JWT middleware for all routes
 app.use("*", anonJwtCookie);
 
-/**
- * Main route: renders the landing page inside the main layout.
- * The anonymous JWT logic above ensures all users have a valid JWT cookie before this handler runs.
- */
 app.get("/", (c) =>
   c.html(
     <Layout>
@@ -31,7 +21,6 @@ app.get("/", (c) =>
   )
 );
 
-// Create route
 app.get("/create", (c) =>
   c.html(
     <Layout>
@@ -40,7 +29,52 @@ app.get("/create", (c) =>
   )
 );
 
-// Show all registered routes for development/debugging
+app.get("/poll/:pollId", (c) => {
+  const pollId = c.req.param("pollId");
+  return c.html(
+    <Layout>
+      {/* PollPage is now async and fetches its own data */}
+      <PollPage pollId={pollId} />
+    </Layout>
+  );
+});
+
+app.post("/api/poll/create", async (c) => {
+  const body = await c.req.parseBody();
+  const question = String(body["question"] || "").trim();
+  const options = [1, 2, 3, 4, 5]
+    .map((i) => String(body[`option${i}`] || "").trim())
+    .filter((opt) => opt.length > 0);
+  const ttl = parseInt(String(body["ttl"] || "86400"), 10) || 86400;
+
+  if (!question || options.length < 2) {
+    return c.json({ error: "Invalid poll data" }, 400);
+  }
+
+  const id = crypto.randomUUID();
+  const durableId = c.env.POLLS.idFromString(id);
+  const stub = c.env.POLLS.get(durableId);
+  // Get ownerId from JWT (set by anonJwtCookie middleware)
+  const jwtPayload = c.get('jwtPayload');
+  const ownerId = jwtPayload && typeof jwtPayload.sub === 'string' ? jwtPayload.sub : 'unknown';
+
+  const pollData: PollData = {
+    id,
+    question,
+    options,
+    ttl,
+    createdAt: Date.now(),
+    ownerId,
+  };
+
+  await stub.fetch("/state", {
+    method: "POST",
+    body: JSON.stringify(pollData),
+  });
+
+  return c.json({ id, message: "Poll created successfully" });
+});
+
 showRoutes(app, { verbose: true });
 
 export default app;

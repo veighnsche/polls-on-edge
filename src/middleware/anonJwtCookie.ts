@@ -38,9 +38,10 @@ export const anonJwtCookie: MiddlewareHandler = async (c, next) => {
   // Check for a valid JWT cookie
   const cookieValue = cookies[JWT_COOKIE_NAME];
   let valid = false;
+  let jwtPayload: any = undefined;
   if (cookieValue) {
     try {
-      await verify(cookieValue, JWT_SECRET);
+      jwtPayload = await verify(cookieValue, JWT_SECRET);
       valid = true; // JWT is valid
     } catch (e) {
       // Invalid or expired token; will issue a new one
@@ -59,7 +60,11 @@ export const anonJwtCookie: MiddlewareHandler = async (c, next) => {
       "Set-Cookie",
       `${JWT_COOKIE_NAME}=${token}; HttpOnly; Path=/; SameSite=Lax; Max-Age=604800`
     );
+    jwtPayload = payload;
   }
+
+  // Attach the JWT payload to context for downstream access
+  c.set('jwtPayload', jwtPayload);
 
   await next(); // Continue to route handler
 };
