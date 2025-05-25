@@ -90,23 +90,30 @@ export async function editPoll({ pollId, question, options, ttl, env, jwtPayload
   return { ok: true };
 }
 
-export async function deletePoll({ pollId, env, jwtPayload }: {
+export async function deletePoll({ pollId, env, jwtPayload, jwt }: {
   pollId: string;
   env: Env;
   jwtPayload: JwtPayload;
+  jwt: string;
 }): Promise<{ ok: boolean; error?: string }> {
   const durableId = env.POLL_DO.idFromString(pollId);
   const stub = env.POLL_DO.get(durableId);
-  const ownerId = jwtPayload && typeof jwtPayload.sub === 'string' ? jwtPayload.sub : 'unknown';
   const res = await stub.fetch("https://dummy/state");
   if (!res.ok) {
     return { ok: false, error: "Poll not found" };
   }
   const poll: PollData = await res.json();
+  const ownerId = jwtPayload && typeof jwtPayload.sub === 'string' ? jwtPayload.sub : 'unknown';
   if (!poll || poll.ownerId !== ownerId) {
     return { ok: false, error: "Unauthorized" };
   }
-  await stub.fetch("https://dummy/delete", { method: "DELETE" });
+  await stub.fetch("https://dummy/delete", {
+    method: "DELETE",
+    headers: {
+      "Authorization": `Bearer ${jwt}`,
+      "Content-Type": "application/json"
+    }
+  });
   // Remove from global poll index
   const existing = await env.POLL_INDEX.get(ownerId, "json");
   const pollIds = Array.isArray(existing) ? existing : [];
@@ -115,16 +122,21 @@ export async function deletePoll({ pollId, env, jwtPayload }: {
   return { ok: true };
 }
 
-export async function votePoll({ pollId, optionIndex, env }: {
+export async function votePoll({ pollId, optionIndex, env, jwt }: {
   pollId: string;
   optionIndex: number;
   env: Env;
+  jwt: string;
 }): Promise<{ ok: boolean; updatedPoll?: PollData; error?: string }> {
   const durableId = env.POLL_DO.idFromString(pollId);
   const stub = env.POLL_DO.get(durableId);
   const voteRes = await stub.fetch("https://dummy/vote", {
     method: "POST",
     body: JSON.stringify({ optionIndex }),
+    headers: {
+      "Authorization": `Bearer ${jwt}`,
+      "Content-Type": "application/json"
+    }
   });
   if (!voteRes.ok) {
     return { ok: false, error: "Vote failed" };
