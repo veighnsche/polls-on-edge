@@ -11,13 +11,17 @@ export interface PollData {
 
 interface PollPageProps {
   pollId: string;
+  env: { POLL_DO: DurableObjectNamespace };
+  jwtPayload: any;
 }
 
-export const PollPage: FC<PollPageProps> = async ({ pollId }) => {
+export const PollPage: FC<PollPageProps> = async ({ pollId, env, jwtPayload }) => {
   let poll: PollData | null = null;
   let error: string | null = null;
   try {
-    const res = await fetch(`/api/poll/${pollId}`);
+    const durableId = env.POLL_DO.idFromString(pollId);
+    const stub = env.POLL_DO.get(durableId);
+    const res = await stub.fetch("https://dummy/state");
     if (!res.ok) throw new Error("Poll not found");
     poll = await res.json();
   } catch (err: any) {
@@ -39,6 +43,7 @@ export const PollPage: FC<PollPageProps> = async ({ pollId }) => {
       </section>
     );
   }
+  // Debug: log the current user and poll owner
   return (
     <section className="rounded-xl shadow p-10 flex flex-col items-center bg-card max-w-lg mx-auto mt-10">
       <h1 className="text-2xl sm:text-3xl font-bold mb-6 text-primary text-center">
@@ -55,6 +60,18 @@ export const PollPage: FC<PollPageProps> = async ({ pollId }) => {
           </button>
         ))}
       </form>
+      {/* Show Edit/Remove if user is owner */}
+      {jwtPayload && jwtPayload.sub === poll.ownerId && (
+        <div className="flex gap-4 mt-6">
+          <a
+            href={`/poll/${poll.id}/edit`}
+            className="px-4 py-2 rounded bg-yellow-500 text-white font-semibold hover:bg-yellow-600 transition text-center"
+          >
+            Edit
+          </a>
+          <button type="button" className="px-4 py-2 rounded bg-red-600 text-white font-semibold hover:bg-red-700 transition">Remove</button>
+        </div>
+      )}
       <p className="text-sm text-muted mt-6">Poll ID: {poll.id}</p>
     </section>
   );
