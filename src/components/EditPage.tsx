@@ -35,14 +35,12 @@ export const EditPage = async ({ pollId, env, jwtPayload }: EditPageProps) => {
       <h1 className="text-2xl sm:text-3xl font-bold mb-6 text-primary text-center">
         Edit Poll
       </h1>
-      <div id="poll-edit-error"></div>
       <PollForm
         initialQuestion={poll.question}
         initialOptions={poll.options}
         initialTTL={String(poll.ttl)}
         onSubmitAction={`/api/poll/${pollId}/edit`}
         submitLabel="Save Changes"
-        htmxErrorTarget="#poll-edit-error"
       />
     </section>
   );

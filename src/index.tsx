@@ -10,7 +10,7 @@ import { ConfirmDeletePage } from "./components/ConfirmDeletePage";
 
 export { PollDurableObject } from "./PollDurableObject";
 
-type Bindings = { POLL_DO: DurableObjectNamespace };
+type Bindings = { POLL_DO: DurableObjectNamespace; POLL_INDEX: KVNamespace };
 const app = new Hono<{ Bindings: Bindings }>();
 
 app.use("*", anonJwtCookie);
@@ -98,6 +98,12 @@ app.post("/api/poll/create", async (c) => {
     body: JSON.stringify(pollData),
   });
 
+  // Update global poll index for owner
+  const existing = await c.env.POLL_INDEX.get(ownerId, "json");
+  const pollIds = Array.isArray(existing) ? existing : [];
+  pollIds.push(id);
+  await c.env.POLL_INDEX.put(ownerId, JSON.stringify(pollIds));
+
   return c.redirect(`/poll/${id}`);
 });
 
@@ -182,7 +188,36 @@ app.post("/api/poll/:pollId/delete", async (c) => {
     );
   }
   await stub.fetch("https://dummy/delete", { method: "DELETE" });
+
+  // Remove from global poll index
+  const existing = await c.env.POLL_INDEX.get(ownerId, "json");
+  const pollIds = Array.isArray(existing) ? existing : [];
+  const updatedPollIds = pollIds.filter((pid: string) => pid !== pollId);
+  await c.env.POLL_INDEX.put(ownerId, JSON.stringify(updatedPollIds));
+
   return c.redirect("/");
+});
+
+// Endpoint: Get all polls for current owner
+app.get("/api/my-polls", async (c) => {
+  const jwtPayload = c.get('jwtPayload');
+  const ownerId = jwtPayload && typeof jwtPayload.sub === 'string' ? jwtPayload.sub : 'unknown';
+  const pollIds = await c.env.POLL_INDEX.get(ownerId, "json");
+  if (!Array.isArray(pollIds) || pollIds.length === 0) {
+    return c.json([]);
+  }
+  // Fetch each poll's data from its DO
+  const polls: any[] = [];
+  for (const pollId of pollIds) {
+    const durableId = c.env.POLL_DO.idFromString(pollId);
+    const stub = c.env.POLL_DO.get(durableId);
+    const res = await stub.fetch("https://dummy/state");
+    if (res.ok) {
+      const poll: PollData = await res.json();
+      if (poll && poll.ownerId === ownerId) polls.push(poll);
+    }
+  }
+  return c.json(polls);
 });
 
 showRoutes(app, { verbose: true });

@@ -6,7 +6,6 @@ interface PollFormProps {
   initialTTL?: string;
   onSubmitAction?: string;
   submitLabel?: string;
-  htmxErrorTarget: string;
 }
 
 /**
@@ -19,14 +18,8 @@ export const PollForm: FC<PollFormProps> = ({
   initialTTL = "86400",
   onSubmitAction = "/api/poll/create",
   submitLabel = "Create Poll",
-  htmxErrorTarget,
 }) => (
-  <form
-    hx-post={onSubmitAction}
-    hx-target={htmxErrorTarget}
-    hx-swap="innerHTML"
-    className="w-full max-w-lg flex flex-col gap-6"
-  >
+  <form method="post" action={onSubmitAction} className="w-full max-w-lg flex flex-col gap-6">
     {/* Poll Question */}
     <div>
       <label htmlFor="question" className="block text-lg font-medium mb-2 text-foreground">

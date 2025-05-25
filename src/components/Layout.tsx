@@ -7,7 +7,6 @@ export const Layout: FC = (props) => (
       <meta name="viewport" content="width=device-width, initial-scale=1" />
       <title>Polls on Edge</title>
       <link rel="stylesheet" href="/dist/styles.css" />
-      <script src="https://unpkg.com/htmx.org@2.0.4"></script>
     </head>
     <body>
       <header className="py-6 shadow-md mb-8 bg-primary">

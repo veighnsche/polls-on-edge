@@ -11,11 +11,9 @@ export const CreatePage: FC = () => (
     <h1 className="text-2xl sm:text-3xl font-bold mb-6 text-primary text-center">
       Create a New Poll
     </h1>
-    <div id="poll-create-error"></div>
     <PollForm
       submitLabel="Create Poll"
       onSubmitAction="/api/poll/create"
-      htmxErrorTarget="#poll-create-error"
     />
   </section>
 );
