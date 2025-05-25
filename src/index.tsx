@@ -6,6 +6,7 @@ import { anonJwtCookie } from "./middleware/anonJwtCookie";
 import { CreatePage } from "./components/CreatePage";
 import { PollData, PollPage } from "./components/PollPage";
 import { EditPage } from "./components/EditPage";
+import { ConfirmDeletePage } from "./components/ConfirmDeletePage";
 
 export { PollDurableObject } from "./PollDurableObject";
 
@@ -50,6 +51,16 @@ app.get("/poll/:pollId/edit", (c) => {
   );
 });
 
+app.get("/poll/:pollId/confirm-delete", (c) => {
+  const pollId = c.req.param("pollId");
+  const jwtPayload = c.get('jwtPayload');
+  return c.html(
+    <Layout>
+      <ConfirmDeletePage pollId={pollId} env={c.env} jwtPayload={jwtPayload} />
+    </Layout>
+  );
+});
+
 app.post("/api/poll/create", async (c) => {
   const body = await c.req.parseBody();
   const question = String(body["question"] || "").trim();
@@ -59,7 +70,11 @@ app.post("/api/poll/create", async (c) => {
   const ttl = parseInt(String(body["ttl"] || "86400"), 10) || 86400;
 
   if (!question || options.length < 2) {
-    return c.json({ error: "Invalid poll data" }, 400);
+    return c.html(
+      <section className="rounded-xl shadow p-10 flex flex-col items-center bg-card max-w-lg mx-auto mt-10">
+        <h1 className="text-2xl font-bold mb-4 text-destructive">Invalid poll data</h1>
+      </section>
+    );
   }
 
   const durableId = c.env.POLL_DO.newUniqueId();
@@ -96,7 +111,11 @@ app.post("/api/poll/:pollId/edit", async (c) => {
   const ttl = parseInt(String(body["ttl"] || "86400"), 10) || 86400;
 
   if (!question || options.length < 2) {
-    return c.json({ error: "Invalid poll data" }, 400);
+    return c.html(
+      <section className="rounded-xl shadow p-10 flex flex-col items-center bg-card max-w-lg mx-auto mt-10">
+        <h1 className="text-2xl font-bold mb-4 text-destructive">Invalid poll data</h1>
+      </section>
+    );
   }
 
   const durableId = c.env.POLL_DO.idFromString(pollId);
@@ -108,11 +127,20 @@ app.post("/api/poll/:pollId/edit", async (c) => {
   // Fetch existing poll
   const res = await stub.fetch("https://dummy/state");
   if (!res.ok) {
-    return c.json({ error: "Poll not found" }, 404);
+    return c.html(
+      <section className="rounded-xl shadow p-10 flex flex-col items-center bg-card max-w-lg mx-auto mt-10">
+        <h1 className="text-2xl font-bold mb-4 text-destructive">Poll not found</h1>
+      </section>
+    );
   }
+
   const poll: PollData = await res.json();
   if (!poll || poll.ownerId !== ownerId) {
-    return c.json({ error: "Unauthorized" }, 403);
+    return c.html(
+      <section className="rounded-xl shadow p-10 flex flex-col items-center bg-card max-w-lg mx-auto mt-10">
+        <h1 className="text-2xl font-bold mb-4 text-destructive">Unauthorized</h1>
+      </section>
+    );
   }
 
   const updatedPoll = {
@@ -129,6 +157,32 @@ app.post("/api/poll/:pollId/edit", async (c) => {
   });
 
   return c.redirect(`/poll/${pollId}`);
+});
+
+app.post("/api/poll/:pollId/delete", async (c) => {
+  const pollId = c.req.param("pollId");
+  const durableId = c.env.POLL_DO.idFromString(pollId);
+  const stub = c.env.POLL_DO.get(durableId);
+  const jwtPayload = c.get('jwtPayload');
+  const ownerId = jwtPayload && typeof jwtPayload.sub === 'string' ? jwtPayload.sub : 'unknown';
+  const res = await stub.fetch("https://dummy/state");
+  if (!res.ok) {
+    return c.html(
+      <section className="rounded-xl shadow p-10 flex flex-col items-center bg-card max-w-lg mx-auto mt-10">
+        <h1 className="text-2xl font-bold mb-4 text-destructive">Poll not found</h1>
+      </section>
+    );
+  }
+  const poll: PollData = await res.json();
+  if (!poll || poll.ownerId !== ownerId) {
+    return c.html(
+      <section className="rounded-xl shadow p-10 flex flex-col items-center bg-card max-w-lg mx-auto mt-10">
+        <h1 className="text-2xl font-bold mb-4 text-destructive">Unauthorized</h1>
+      </section>
+    );
+  }
+  await stub.fetch("https://dummy/delete", { method: "DELETE" });
+  return c.redirect("/");
 });
 
 showRoutes(app, { verbose: true });

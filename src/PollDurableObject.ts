@@ -25,6 +25,13 @@ export class PollDurableObject {
       return new Response("OK", { status: 200 });
     }
 
+    if (request.method === "DELETE" && url.pathname === "/delete") {
+      const existed = await this.state.storage.get("poll");
+      if (!existed) return new Response("Not found", { status: 404 });
+      await this.state.storage.delete("poll");
+      return new Response("Deleted", { status: 200 });
+    }
+
     return new Response("Not found", { status: 404 });
   }
 }

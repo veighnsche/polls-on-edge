@@ -65,13 +65,19 @@ export const PollPage: FC<PollPageProps> = async ({ pollId, env, jwtPayload }) =
         <div className="flex gap-4 mt-6">
           <a
             href={`/poll/${poll.id}/edit`}
-            className="px-4 py-2 rounded bg-yellow-500 text-white font-semibold hover:bg-yellow-600 transition text-center"
+            className="px-4 py-2 rounded bg-yellow-500 text-white font-semibold hover:bg-yellow-600 transition"
           >
             Edit
           </a>
-          <button type="button" className="px-4 py-2 rounded bg-red-600 text-white font-semibold hover:bg-red-700 transition">Remove</button>
+          <a
+            href={`/poll/${poll.id}/confirm-delete`}
+            className="px-4 py-2 rounded bg-red-600 text-white font-semibold hover:bg-red-700 transition"
+          >
+            Remove
+          </a>
         </div>
       )}
+
       <p className="text-sm text-muted mt-6">Poll ID: {poll.id}</p>
     </section>
   );
