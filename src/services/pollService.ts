@@ -7,13 +7,15 @@ type Env = {
 
 type JwtPayload = { sub?: string };
 
-export async function createPoll({ question, options, ttl, env, jwtPayload }: {
+export async function createPoll({ question, options, ttl, env, jwtPayload, jwt }: {
   question: string;
   options: string[];
   ttl: number;
   env: Env;
   jwtPayload: JwtPayload;
-}): Promise<{ id: string }> {
+  jwt: string;
+}): Promise<{ id?: string; error?: string }> {
+  console.log("[SERVICE] createPoll called with:", { question, options, ttl, jwtPayload, jwt });
   const durableId = env.POLL_DO.newUniqueId();
   const id = durableId.toString();
   const stub = env.POLL_DO.get(durableId);
@@ -28,18 +30,32 @@ export async function createPoll({ question, options, ttl, env, jwtPayload }: {
     ownerId,
     votes: Array(options.length).fill(0),
   };
+  console.log("[SERVICE] pollData:", { ...pollData, votes: `[${pollData.votes.length} votes omitted]` });
 
-  await stub.fetch("https://dummy/state", {
-    method: "POST",
+  const doResponse = await stub.fetch("https://dummy/state", {
+    method: "PUT",
     body: JSON.stringify(pollData),
+    headers: {
+      "Authorization": `Bearer ${jwt}`,
+      "Content-Type": "application/json"
+    }
   });
+  console.log("[SERVICE] DO response status:", doResponse.status);
+  if (!doResponse.ok) {
+    const text = await doResponse.text();
+    console.log("[SERVICE] DO error response:", text);
+    return { error: text };
+  }
 
   // Update global poll index for owner
   const existing = await env.POLL_INDEX.get(ownerId, "json");
+  console.log("[SERVICE] existing pollIds:", existing);
   const pollIds = Array.isArray(existing) ? existing : [];
   pollIds.push(id);
   await env.POLL_INDEX.put(ownerId, JSON.stringify(pollIds));
+  console.log("[SERVICE] pollIds after push:", pollIds);
   return { id };
+
 }
 
 export async function editPoll({ pollId, question, options, ttl, env, jwtPayload }: {

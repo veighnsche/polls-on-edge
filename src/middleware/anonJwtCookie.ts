@@ -9,7 +9,6 @@
 import { sign, verify } from "hono/jwt";
 import type { MiddlewareHandler } from "hono";
 
-const JWT_SECRET = "dev_secret_change_me"; // Secret for signing/verifying JWTs
 const JWT_COOKIE_NAME = "jwt";              // Name of the JWT cookie
 
 /**
@@ -36,6 +35,10 @@ export const anonJwtCookie: MiddlewareHandler = async (c, next) => {
 
   // --- Anonymous JWT Logic ---
   // Check for a valid JWT cookie
+  const JWT_SECRET = c.env.JWT_SECRET;
+  if (!JWT_SECRET) {
+    throw new Error("JWT_SECRET is not set in the environment variables!");
+  }
   const cookieValue = cookies[JWT_COOKIE_NAME];
   let valid = false;
   let jwtPayload: any = undefined;

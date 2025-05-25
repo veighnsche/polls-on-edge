@@ -46,6 +46,9 @@
 	 * https://developers.cloudflare.com/workers/wrangler/configuration/#environment-variables
 	 */
 	// "vars": { "MY_VARIABLE": "production_value" },
+	"vars": {
+    "JWT_SECRET": "QiJ{P]Q{dh2$*n8xJkdB+v|]#&cQ21dPdC"
+  },
 	/**
 	 * Note: Use secrets to store sensitive data.
 	 * https://developers.cloudflare.com/workers/configuration/secrets/
@@ -62,7 +65,7 @@
 	 * https://developers.cloudflare.com/workers/wrangler/configuration/#service-bindings
 	 */
 	// "services": [{ "binding": "MY_SERVICE", "service": "my-service" }],
-	"migrations": [
+  "migrations": [
 		{ "tag": "v1", "new_classes": ["PollDurableObject"] }
 	]
 }
