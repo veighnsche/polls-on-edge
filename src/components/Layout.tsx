@@ -11,7 +11,7 @@ export const Layout: FC = (props) => (
     <body>
       <header className="py-6 shadow-md mb-8 bg-primary">
         <h1 className="text-3xl font-bold text-center tracking-wide text-primary-foreground">
-          Polls on Edge
+          <a href="/">Polls on Edge</a>
         </h1>
       </header>
       <main className="max-w-xl mx-auto px-4">{props.children}</main>

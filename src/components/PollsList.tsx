@@ -27,13 +27,22 @@ export const PollsList: FC<PollsListProps> = async ({ env, jwtPayload }) => {
       {polls.length > 0 ? (
         <ul className="w-full flex flex-col gap-3">
           {polls.map((poll) => (
-            <li key={poll.id} className="bg-muted/80 rounded p-4 flex justify-between items-center">
-              <span className="font-semibold text-foreground">{poll.question}</span>
+            <li
+              key={poll.id}
+              className="border border-muted/80 rounded-xl shadow p-0 flex justify-between items-center hover:bg-muted transition"
+            >
               <a
                 href={`/poll/${poll.id}`}
-                className="ml-4 text-muted-foreground underline hover:text-muted-foreground/80"
+                className="flex-1 block p-4 font-semibold text-foreground no-underline hover:underline rounded-l transition"
               >
-                View
+                {poll.question}
+              </a>
+              <a
+                href={`/poll/${poll.id}/delete`}
+                className="mr-2 px-3 py-2 rounded-lg bg-destructive text-destructive-foreground font-semibold hover:bg-destructive/80 transition text-center"
+                style={{ minWidth: '80px' }}
+              >
+                Delete
               </a>
             </li>
           ))}

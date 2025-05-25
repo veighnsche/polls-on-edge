@@ -44,7 +44,7 @@ app.get("/poll/:pollId/edit", (c) => {
   return c.render(<EditPage pollId={pollId} env={c.env} jwtPayload={jwtPayload} />);
 });
 
-app.get("/poll/:pollId/confirm-delete", (c) => {
+app.get("/poll/:pollId/delete", (c) => {
   const pollId = c.req.param("pollId");
   const jwtPayload = c.get('jwtPayload');
   return c.render(<ConfirmDeletePage pollId={pollId} env={c.env} jwtPayload={jwtPayload} />);
@@ -186,28 +186,6 @@ app.post("/api/poll/:pollId/delete", async (c) => {
   await c.env.POLL_INDEX.put(ownerId, JSON.stringify(updatedPollIds));
 
   return c.redirect("/");
-});
-
-// Endpoint: Get all polls for current owner
-app.get("/api/my-polls", async (c) => {
-  const jwtPayload = c.get('jwtPayload');
-  const ownerId = jwtPayload && typeof jwtPayload.sub === 'string' ? jwtPayload.sub : 'unknown';
-  const pollIds = await c.env.POLL_INDEX.get(ownerId, "json");
-  if (!Array.isArray(pollIds) || pollIds.length === 0) {
-    return c.json([]);
-  }
-  // Fetch each poll's data from its DO
-  const polls: any[] = [];
-  for (const pollId of pollIds) {
-    const durableId = c.env.POLL_DO.idFromString(pollId);
-    const stub = c.env.POLL_DO.get(durableId);
-    const res = await stub.fetch("https://dummy/state");
-    if (res.ok) {
-      const poll: PollData = await res.json();
-      if (poll && poll.ownerId === ownerId) polls.push(poll);
-    }
-  }
-  return c.json(polls);
 });
 
 app.post("/api/poll/:pollId/vote", async (c) => {
