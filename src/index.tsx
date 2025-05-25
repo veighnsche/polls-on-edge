@@ -7,7 +7,7 @@ import { CreatePage } from "./components/CreatePage";
 import { PollPage } from "./components/PollPage";
 import { EditPage } from "./components/EditPage";
 import { ConfirmDeletePage } from "./components/ConfirmDeletePage";
-import { PollData } from "./types/PollData";
+import * as pollService from "./services/pollService";
 import { jsxRenderer } from "hono/jsx-renderer";
 
 export { PollDurableObject } from "./PollDurableObject";
@@ -66,35 +66,15 @@ app.post("/api/poll/create", async (c) => {
     );
   }
 
-  const durableId = c.env.POLL_DO.newUniqueId();
-  const id = durableId.toString();
-  const stub = c.env.POLL_DO.get(durableId);
-  // Get ownerId from JWT (set by anonJwtCookie middleware)
   const jwtPayload = c.get('jwtPayload');
-  const ownerId = jwtPayload && typeof jwtPayload.sub === 'string' ? jwtPayload.sub : 'unknown';
-
-  const pollData: PollData = {
-    id,
+  const result = await pollService.createPoll({
     question,
     options,
     ttl,
-    createdAt: Date.now(),
-    ownerId,
-    votes: Array(options.length).fill(0), // Initialize votes for each option
-  };
-
-  await stub.fetch("https://dummy/state", {
-    method: "POST",
-    body: JSON.stringify(pollData),
+    env: c.env,
+    jwtPayload
   });
-
-  // Update global poll index for owner
-  const existing = await c.env.POLL_INDEX.get(ownerId, "json");
-  const pollIds = Array.isArray(existing) ? existing : [];
-  pollIds.push(id);
-  await c.env.POLL_INDEX.put(ownerId, JSON.stringify(pollIds));
-
-  return c.redirect(`/poll/${id}`);
+  return c.redirect(`/poll/${result.id}`);
 });
 
 app.post("/api/poll/:pollId/edit", async (c) => {
@@ -113,78 +93,54 @@ app.post("/api/poll/:pollId/edit", async (c) => {
       </section>
     );
   }
-
-  const durableId = c.env.POLL_DO.idFromString(pollId);
-  const stub = c.env.POLL_DO.get(durableId);
-  // Get ownerId from JWT (set by anonJwtCookie middleware)
   const jwtPayload = c.get('jwtPayload');
-  const ownerId = jwtPayload && typeof jwtPayload.sub === 'string' ? jwtPayload.sub : 'unknown';
-
-  // Fetch existing poll
-  const res = await stub.fetch("https://dummy/state");
-  if (!res.ok) {
+  const result = await pollService.editPoll({
+    pollId,
+    question,
+    options,
+    ttl,
+    env: c.env,
+    jwtPayload
+  });
+  if (!result.ok && result.error === "Poll not found") {
     return c.html(
       <section className="rounded-xl shadow p-10 flex flex-col items-center bg-card max-w-lg mx-auto mt-10">
         <h1 className="text-2xl font-bold mb-4 text-destructive">Poll not found</h1>
       </section>
     );
   }
-
-  const poll: PollData = await res.json();
-  if (!poll || poll.ownerId !== ownerId) {
+  if (!result.ok && result.error === "Unauthorized") {
     return c.html(
       <section className="rounded-xl shadow p-10 flex flex-col items-center bg-card max-w-lg mx-auto mt-10">
         <h1 className="text-2xl font-bold mb-4 text-destructive">Unauthorized</h1>
       </section>
     );
   }
-
-  const updatedPoll = {
-    ...poll,
-    question,
-    options,
-    ttl,
-    // Do not update createdAt or ownerId
-  };
-
-  await stub.fetch("https://dummy/state", {
-    method: "POST",
-    body: JSON.stringify(updatedPoll),
-  });
-
   return c.redirect(`/poll/${pollId}`);
 });
 
 app.post("/api/poll/:pollId/delete", async (c) => {
   const pollId = c.req.param("pollId");
-  const durableId = c.env.POLL_DO.idFromString(pollId);
-  const stub = c.env.POLL_DO.get(durableId);
   const jwtPayload = c.get('jwtPayload');
-  const ownerId = jwtPayload && typeof jwtPayload.sub === 'string' ? jwtPayload.sub : 'unknown';
-  const res = await stub.fetch("https://dummy/state");
-  if (!res.ok) {
+  const result = await pollService.deletePoll({
+    pollId,
+    env: c.env,
+    jwtPayload
+  });
+  if (!result.ok && result.error === "Poll not found") {
     return c.html(
       <section className="rounded-xl shadow p-10 flex flex-col items-center bg-card max-w-lg mx-auto mt-10">
         <h1 className="text-2xl font-bold mb-4 text-destructive">Poll not found</h1>
       </section>
     );
   }
-  const poll: PollData = await res.json();
-  if (!poll || poll.ownerId !== ownerId) {
+  if (!result.ok && result.error === "Unauthorized") {
     return c.html(
       <section className="rounded-xl shadow p-10 flex flex-col items-center bg-card max-w-lg mx-auto mt-10">
         <h1 className="text-2xl font-bold mb-4 text-destructive">Unauthorized</h1>
       </section>
     );
   }
-  await stub.fetch("https://dummy/delete", { method: "DELETE" });
-
-  // Remove from global poll index
-  const existing = await c.env.POLL_INDEX.get(ownerId, "json");
-  const pollIds = Array.isArray(existing) ? existing : [];
-  const updatedPollIds = pollIds.filter((pid: string) => pid !== pollId);
-  await c.env.POLL_INDEX.put(ownerId, JSON.stringify(updatedPollIds));
-
   return c.redirect("/");
 });
 
@@ -194,17 +150,15 @@ app.post("/api/poll/:pollId/vote", async (c) => {
   if (typeof optionIndex !== "number") {
     return c.json({ error: "Invalid option index" }, 400);
   }
-  const durableId = c.env.POLL_DO.idFromString(pollId);
-  const stub = c.env.POLL_DO.get(durableId);
-  const voteRes = await stub.fetch("https://dummy/vote", {
-    method: "POST",
-    body: JSON.stringify({ optionIndex }),
+  const result = await pollService.votePoll({
+    pollId,
+    optionIndex,
+    env: c.env
   });
-  if (!voteRes.ok) {
-    return c.json({ error: "Vote failed" }, 500);
+  if (!result.ok) {
+    return c.json({ error: result.error || "Vote failed" }, 500);
   }
-  const updatedPoll = await voteRes.json();
-  return c.json(updatedPoll);
+  return c.json(result.updatedPoll);
 });
 
 showRoutes(app, { verbose: true });

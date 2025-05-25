@@ -7,3 +7,8 @@ export interface PollData {
   ownerId: string;
   votes: number[]; // Number of votes for each option
 }
+
+
+export interface VoteRequestBody {
+  optionIndex: number;
+}

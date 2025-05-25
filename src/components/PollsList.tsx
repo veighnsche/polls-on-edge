@@ -1,4 +1,3 @@
-import type { FC } from "hono/jsx";
 import { PollData } from "../types/PollData";
 
 interface PollsListProps {
@@ -6,7 +5,7 @@ interface PollsListProps {
   jwtPayload: any;
 }
 
-export const PollsList: FC<PollsListProps> = async ({ env, jwtPayload }) => {
+export const PollsList = async ({ env, jwtPayload }: PollsListProps) => {
   const ownerId = jwtPayload && typeof jwtPayload.sub === 'string' ? jwtPayload.sub : 'unknown';
   const pollIds = await env.POLL_INDEX.get(ownerId, "json");
   let polls: PollData[] = [];
