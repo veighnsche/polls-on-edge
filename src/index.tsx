@@ -8,6 +8,7 @@ import { PollPage } from "./components/PollPage";
 import { EditPage } from "./components/EditPage";
 import { ConfirmDeletePage } from "./components/ConfirmDeletePage";
 import { PollData } from "./types/PollData";
+import { jsxRenderer } from "hono/jsx-renderer";
 
 export { PollDurableObject } from "./PollDurableObject";
 
@@ -16,51 +17,37 @@ const app = new Hono<{ Bindings: Bindings }>();
 
 app.use("*", anonJwtCookie);
 
-app.get("/", (c) => {
-  const jwtPayload = c.get('jwtPayload');
-  return c.html(
+app.get("*", jsxRenderer(({ children }) => {
+  return (
     <Layout>
-      <LandingPage env={c.env} jwtPayload={jwtPayload} />
-    </Layout>
-  );
-});
-
-app.get("/create", (c) =>
-  c.html(
-    <Layout>
-      <CreatePage />
+      {children}
     </Layout>
   )
-);
+}))
+
+app.get("/", (c) => {
+  const jwtPayload = c.get('jwtPayload');
+  return c.render(<LandingPage env={c.env} jwtPayload={jwtPayload} />);
+});
+
+app.get("/create", (c) => c.render(<CreatePage />));
 
 app.get("/poll/:pollId", (c) => {
   const pollId = c.req.param("pollId");
   const jwtPayload = c.get('jwtPayload');
-  return c.html(
-    <Layout>
-      <PollPage pollId={pollId} env={c.env} jwtPayload={jwtPayload} />
-    </Layout>
-  );
+  return c.render(<PollPage pollId={pollId} env={c.env} jwtPayload={jwtPayload} />);
 });
 
 app.get("/poll/:pollId/edit", (c) => {
   const pollId = c.req.param("pollId");
   const jwtPayload = c.get('jwtPayload');
-  return c.html(
-    <Layout>
-      <EditPage pollId={pollId} env={c.env} jwtPayload={jwtPayload} />
-    </Layout>
-  );
+  return c.render(<EditPage pollId={pollId} env={c.env} jwtPayload={jwtPayload} />);
 });
 
 app.get("/poll/:pollId/confirm-delete", (c) => {
   const pollId = c.req.param("pollId");
   const jwtPayload = c.get('jwtPayload');
-  return c.html(
-    <Layout>
-      <ConfirmDeletePage pollId={pollId} env={c.env} jwtPayload={jwtPayload} />
-    </Layout>
-  );
+  return c.render(<ConfirmDeletePage pollId={pollId} env={c.env} jwtPayload={jwtPayload} />);
 });
 
 app.post("/api/poll/create", async (c) => {
