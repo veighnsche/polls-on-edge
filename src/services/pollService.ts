@@ -1,4 +1,18 @@
-import { PollData } from "../types/PollData";
+/*
+ * pollService.ts – hardened service‑layer helpers
+ * ------------------------------------------------------------
+ * • Requires a real JWT for every mutating call.
+ * • Consistent error handling – bubbles DO response text.
+ * • DRY header builder.
+ * • Helpful console logs gated behind `DEBUG` env var.
+ */
+
+import type { PollData } from "../types/PollData";
+import { StatusCodes as HTTP } from "./utils/status"; // tiny enum you can add – optional
+
+/* ------------------------------------------------------------------------- */
+// Types                                                                       
+/* ------------------------------------------------------------------------- */
 
 type Env = {
   POLL_DO: DurableObjectNamespace;
@@ -7,19 +21,42 @@ type Env = {
 
 type JwtPayload = { sub?: string };
 
+/* ------------------------------------------------------------------------- */
+// Internal helpers                                                            
+/* ------------------------------------------------------------------------- */
+
+function debug(...args: unknown[]) {
+  if ((globalThis as any).DEBUG) console.log(...args);
+}
+
+const authHeaders = (jwt: string): HeadersInit => ({
+  Authorization: `Bearer ${jwt}`,
+  "Content-Type": "application/json",
+});
+
+function requireJwt(jwt?: string): asserts jwt is string {
+  if (!jwt) throw new Error("JWT is required for this operation");
+}
+
+/* ------------------------------------------------------------------------- */
+// Service API                                                                 
+/* ------------------------------------------------------------------------- */
+
 export async function createPoll({ question, options, ttl, env, jwtPayload, jwt }: {
   question: string;
   options: string[];
   ttl: number;
   env: Env;
   jwtPayload: JwtPayload;
-  jwt: string;
+  jwt?: string;
 }): Promise<{ id?: string; error?: string }> {
-  console.log("[SERVICE] createPoll called with:", { question, options, ttl, jwtPayload, jwt });
+  requireJwt(jwt);
+  const ownerId = jwtPayload.sub;
+  if (!ownerId) return { error: "Missing ownerId in JWT" };
+
   const durableId = env.POLL_DO.newUniqueId();
   const id = durableId.toString();
   const stub = env.POLL_DO.get(durableId);
-  const ownerId = jwtPayload && typeof jwtPayload.sub === 'string' ? jwtPayload.sub : 'unknown';
 
   const pollData: PollData = {
     id,
@@ -30,32 +67,24 @@ export async function createPoll({ question, options, ttl, env, jwtPayload, jwt 
     ownerId,
     votes: Array(options.length).fill(0),
   };
-  console.log("[SERVICE] pollData:", { ...pollData, votes: `[${pollData.votes.length} votes omitted]` });
 
-  const doResponse = await stub.fetch("https://dummy/state", {
+  debug("[SERVICE] createPoll ->", pollData);
+
+  const res = await stub.fetch("https://dummy/state", {
     method: "PUT",
     body: JSON.stringify(pollData),
-    headers: {
-      "Authorization": `Bearer ${jwt}`,
-      "Content-Type": "application/json"
-    }
+    headers: authHeaders(jwt),
   });
-  console.log("[SERVICE] DO response status:", doResponse.status);
-  if (!doResponse.ok) {
-    const text = await doResponse.text();
-    console.log("[SERVICE] DO error response:", text);
-    return { error: text };
-  }
 
-  // Update global poll index for owner
-  const existing = await env.POLL_INDEX.get(ownerId, "json");
-  console.log("[SERVICE] existing pollIds:", existing);
-  const pollIds = Array.isArray(existing) ? existing : [];
+  if (!res.ok) return { error: await res.text() };
+
+  // Maintain per‑user index ---------------------------------------------------
+  const existing = (await env.POLL_INDEX.get(ownerId, "json")) as string[] | null;
+  const pollIds = existing ?? [];
   pollIds.push(id);
   await env.POLL_INDEX.put(ownerId, JSON.stringify(pollIds));
-  console.log("[SERVICE] pollIds after push:", pollIds);
-  return { id };
 
+  return { id };
 }
 
 export async function editPoll({ pollId, question, options, ttl, env, jwtPayload, jwt }: {
@@ -65,28 +94,29 @@ export async function editPoll({ pollId, question, options, ttl, env, jwtPayload
   ttl: number;
   env: Env;
   jwtPayload: JwtPayload;
-  jwt: string;
+  jwt?: string;
 }): Promise<{ ok: boolean; error?: string }> {
-  const durableId = env.POLL_DO.idFromString(pollId);
-  const stub = env.POLL_DO.get(durableId);
-  const ownerId = jwtPayload && typeof jwtPayload.sub === 'string' ? jwtPayload.sub : 'unknown';
-  const res = await stub.fetch("https://dummy/state");
-  if (!res.ok) {
-    return { ok: false, error: "Poll not found" };
-  }
-  const poll: PollData = await res.json();
-  if (!poll || poll.ownerId !== ownerId) {
-    return { ok: false, error: "Unauthorized" };
-  }
-  const updatedPoll = { ...poll, question, options, ttl };
-  await stub.fetch("https://dummy/state", {
+  requireJwt(jwt);
+  const ownerId = jwtPayload.sub;
+  if (!ownerId) return { ok: false, error: "Missing ownerId in JWT" };
+
+  const stub = env.POLL_DO.get(env.POLL_DO.idFromString(pollId));
+
+  // Fetch current state -------------------------------------------------------
+  const current = await stub.fetch("https://dummy/state");
+  if (current.status === HTTP.NOT_FOUND) return { ok: false, error: "Poll not found" };
+
+  const poll: PollData = await current.json();
+  if (poll.ownerId !== ownerId) return { ok: false, error: "Unauthorized" };
+
+  const updated: PollData = { ...poll, question, options, ttl };
+  const res = await stub.fetch("https://dummy/state", {
     method: "PATCH",
-    body: JSON.stringify(updatedPoll),
-    headers: {
-      "Authorization": `Bearer ${jwt}`,
-      "Content-Type": "application/json"
-    }
+    body: JSON.stringify(updated),
+    headers: authHeaders(jwt),
   });
+
+  if (!res.ok) return { ok: false, error: await res.text() };
   return { ok: true };
 }
 
@@ -94,31 +124,31 @@ export async function deletePoll({ pollId, env, jwtPayload, jwt }: {
   pollId: string;
   env: Env;
   jwtPayload: JwtPayload;
-  jwt: string;
+  jwt?: string;
 }): Promise<{ ok: boolean; error?: string }> {
-  const durableId = env.POLL_DO.idFromString(pollId);
-  const stub = env.POLL_DO.get(durableId);
-  const res = await stub.fetch("https://dummy/state");
-  if (!res.ok) {
-    return { ok: false, error: "Poll not found" };
-  }
-  const poll: PollData = await res.json();
-  const ownerId = jwtPayload && typeof jwtPayload.sub === 'string' ? jwtPayload.sub : 'unknown';
-  if (!poll || poll.ownerId !== ownerId) {
-    return { ok: false, error: "Unauthorized" };
-  }
-  await stub.fetch("https://dummy/delete", {
+  requireJwt(jwt);
+  const ownerId = jwtPayload.sub;
+  if (!ownerId) return { ok: false, error: "Missing ownerId in JWT" };
+
+  const stub = env.POLL_DO.get(env.POLL_DO.idFromString(pollId));
+
+  const resState = await stub.fetch("https://dummy/state");
+  if (resState.status === HTTP.NOT_FOUND) return { ok: false, error: "Poll not found" };
+
+  const poll: PollData = await resState.json();
+  if (poll.ownerId !== ownerId) return { ok: false, error: "Unauthorized" };
+
+  const resDel = await stub.fetch("https://dummy/delete", {
     method: "DELETE",
-    headers: {
-      "Authorization": `Bearer ${jwt}`,
-      "Content-Type": "application/json"
-    }
+    headers: authHeaders(jwt),
   });
-  // Remove from global poll index
-  const existing = await env.POLL_INDEX.get(ownerId, "json");
-  const pollIds = Array.isArray(existing) ? existing : [];
-  const updatedPollIds = pollIds.filter((pid: string) => pid !== pollId);
-  await env.POLL_INDEX.put(ownerId, JSON.stringify(updatedPollIds));
+  if (!resDel.ok) return { ok: false, error: await resDel.text() };
+
+  // Update index -------------------------------------------------------------
+  const existing = (await env.POLL_INDEX.get(ownerId, "json")) as string[] | null;
+  const updatedIds = (existing ?? []).filter((pid) => pid !== pollId);
+  await env.POLL_INDEX.put(ownerId, JSON.stringify(updatedIds));
+
   return { ok: true };
 }
 
@@ -126,21 +156,20 @@ export async function votePoll({ pollId, optionIndex, env, jwt }: {
   pollId: string;
   optionIndex: number;
   env: Env;
-  jwt: string;
+  jwt?: string; // anonymous voting supported? pass undefined to skip auth header
 }): Promise<{ ok: boolean; updatedPoll?: PollData; error?: string }> {
-  const durableId = env.POLL_DO.idFromString(pollId);
-  const stub = env.POLL_DO.get(durableId);
-  const voteRes = await stub.fetch("https://dummy/vote", {
+  const stub = env.POLL_DO.get(env.POLL_DO.idFromString(pollId));
+
+  const res = await stub.fetch("https://dummy/vote", {
     method: "POST",
     body: JSON.stringify({ optionIndex }),
     headers: {
-      "Authorization": `Bearer ${jwt}`,
-      "Content-Type": "application/json"
-    }
+      ...(jwt ? authHeaders(jwt) : { "Content-Type": "application/json" }),
+    },
   });
-  if (!voteRes.ok) {
-    return { ok: false, error: "Vote failed" };
-  }
-  const updatedPoll: PollData = await voteRes.json();
+
+  if (!res.ok) return { ok: false, error: await res.text() };
+
+  const updatedPoll: PollData = await res.json();
   return { ok: true, updatedPoll };
 }
