@@ -58,13 +58,14 @@ export async function createPoll({ question, options, ttl, env, jwtPayload, jwt 
 
 }
 
-export async function editPoll({ pollId, question, options, ttl, env, jwtPayload }: {
+export async function editPoll({ pollId, question, options, ttl, env, jwtPayload, jwt }: {
   pollId: string;
   question: string;
   options: string[];
   ttl: number;
   env: Env;
   jwtPayload: JwtPayload;
+  jwt: string;
 }): Promise<{ ok: boolean; error?: string }> {
   const durableId = env.POLL_DO.idFromString(pollId);
   const stub = env.POLL_DO.get(durableId);
@@ -79,8 +80,12 @@ export async function editPoll({ pollId, question, options, ttl, env, jwtPayload
   }
   const updatedPoll = { ...poll, question, options, ttl };
   await stub.fetch("https://dummy/state", {
-    method: "POST",
+    method: "PATCH",
     body: JSON.stringify(updatedPoll),
+    headers: {
+      "Authorization": `Bearer ${jwt}`,
+      "Content-Type": "application/json"
+    }
   });
   return { ok: true };
 }

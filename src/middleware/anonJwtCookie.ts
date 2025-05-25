@@ -24,12 +24,14 @@ export const anonJwtCookie: MiddlewareHandler = async (c, next) => {
   // --- Cookie Parsing ---
   // Parse the Cookie header into an object: { name: value, ... }
   const cookieHeader = c.req.raw.headers.get('cookie') || '';
+  console.log('[anonJwtCookie] Raw cookie header:', cookieHeader);
   const cookies: Record<string, string> = {};
   cookieHeader.split(';').forEach((cookie) => {
     const [name, ...rest] = cookie.trim().split('=');
     if (!name) return;
     cookies[name] = decodeURIComponent(rest.join('='));
   });
+  console.log('[anonJwtCookie] Parsed cookies:', cookies);
   // Attach a cookie(name) helper to the request object for easy access
   (c.req as any).cookie = (name: string) => cookies[name];
 
@@ -46,7 +48,9 @@ export const anonJwtCookie: MiddlewareHandler = async (c, next) => {
     try {
       jwtPayload = await verify(cookieValue, JWT_SECRET);
       valid = true; // JWT is valid
+      console.log('[anonJwtCookie] Valid JWT found, payload:', jwtPayload);
     } catch (e) {
+      console.log('[anonJwtCookie] Invalid or expired JWT:', e);
       // Invalid or expired token; will issue a new one
     }
   }
@@ -64,10 +68,12 @@ export const anonJwtCookie: MiddlewareHandler = async (c, next) => {
       `${JWT_COOKIE_NAME}=${token}; HttpOnly; Path=/; SameSite=Lax; Max-Age=604800`
     );
     jwtPayload = payload;
+    console.log('[anonJwtCookie] Issued new anonymous JWT:', payload);
   }
 
   // Attach the JWT payload to context for downstream access
   c.set('jwtPayload', jwtPayload);
+  console.log('[anonJwtCookie] Attached jwtPayload to context:', jwtPayload);
 
   await next(); // Continue to route handler
 };

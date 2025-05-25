@@ -132,15 +132,23 @@ export class PollDurableObject {
 
     /* ─────────────── update poll ─────────────── */
     if (method === "PATCH" && url.pathname === "/state") {
+      console.log('[DO] PATCH /state called');
       const jwt = await this.getJwt(request);
-      if (!jwt) return this.text("Unauthorized", 401);
-
+      if (!jwt) {
+        console.log('[DO] PATCH /state: Unauthorized (no JWT)');
+        return this.text("Unauthorized", 401);
+      }
       const poll = await this.loadPoll();
-      if (jwt.sub !== poll.ownerId) return this.text("Forbidden", 403);
-
+      console.log('[DO] PATCH /state: Loaded poll for edit:', poll);
+      if (jwt.sub !== poll.ownerId) {
+        console.log('[DO] PATCH /state: Forbidden (jwt.sub !== poll.ownerId)', { jwtSub: jwt.sub, ownerId: poll.ownerId });
+        return this.text("Forbidden", 403);
+      }
       const patch: PollData = await request.json();
+      console.log('[DO] PATCH /state: Patch data:', patch);
       const updated: PollData = { ...poll, ...patch };
       await this.state.storage.put("poll", updated);
+      console.log('[DO] PATCH /state: Updated poll stored:', updated);
       return this.json(updated);
     }
 

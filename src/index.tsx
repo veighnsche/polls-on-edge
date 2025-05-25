@@ -152,7 +152,18 @@ app.post("/api/poll/:pollId/edit", validatePollForm, async (c) => {
   const pollId = c.req.param("pollId");
   const { question, options, ttl } = c.get("pollForm");
   const jwtPayload = c.get("jwtPayload");
-  const result = await pollService.editPoll({ pollId, question, options, ttl, env: c.env, jwtPayload });
+  const jwt = (c.req as any).cookie ? (c.req as any).cookie("jwt") : undefined;
+  console.log("[ROUTE] JWT string:", jwt);
+  if (!jwt) {
+    return c.html(
+      <section className="rounded-xl shadow p-10 flex flex-col items-center bg-card max-w-lg mx-auto mt-10">
+        <h1 className="text-2xl font-bold mb-4 text-destructive">Missing JWT</h1>
+        <p className="text-sm text-destructive/70">Authentication token missing. Please refresh and try again.</p>
+      </section>,
+      401
+    );
+  }
+  const result = await pollService.editPoll({ pollId, question, options, ttl, env: c.env, jwtPayload, jwt });
   if (!result.ok) {
     const msg = result.error === "Unauthorized" ? "Unauthorized" : "Poll not found";
     return c.html(
