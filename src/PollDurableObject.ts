@@ -1,5 +1,5 @@
 // PollData is defined in index.tsx; import type-only to avoid runtime issues
-import type { PollData } from "./components/PollPage";
+import type { PollData } from "./types/PollData";
 // Now includes ownerId: string (set by creator, used for edit/remove permissions)
 
 export class PollDurableObject {
@@ -32,6 +32,28 @@ export class PollDurableObject {
       return new Response("Deleted", { status: 200 });
     }
 
+    // Voting endpoint
+    if (request.method === "POST" && url.pathname === "/vote") {
+      const poll = await this.state.storage.get<PollData>("poll");
+      if (!poll) return new Response("Not found", { status: 404 });
+      let body;
+      try {
+        body = await request.json();
+      } catch (e) {
+        return new Response("Invalid JSON", { status: 400 });
+      }
+      const { optionIndex } = body || {};
+      if (typeof optionIndex !== "number" || optionIndex < 0 || optionIndex >= poll.options.length) {
+        return new Response("Invalid option index", { status: 400 });
+      }
+      poll.votes[optionIndex] = (poll.votes[optionIndex] || 0) + 1;
+      await this.state.storage.put("poll", poll);
+      return new Response(JSON.stringify(poll), {
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
     return new Response("Not found", { status: 404 });
   }
 }
+

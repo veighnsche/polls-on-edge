@@ -1,4 +1,4 @@
-import type { FC } from "hono/jsx";
+import { PollData } from "../types/PollData";
 
 interface ConfirmDeletePageProps {
   pollId: string;
@@ -7,7 +7,7 @@ interface ConfirmDeletePageProps {
 }
 
 export const ConfirmDeletePage = async ({ pollId, env, jwtPayload }: ConfirmDeletePageProps) => {
-  let poll: import("./PollPage").PollData | null = null;
+  let poll: PollData | null = null;
   let error: string | null = null;
   try {
     const durableId = env.POLL_DO.idFromString(pollId);

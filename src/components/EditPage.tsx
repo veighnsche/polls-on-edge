@@ -1,5 +1,5 @@
-import type { FC } from "hono/jsx";
 import { PollForm } from "./PollForm";
+import { PollData } from "../types/PollData";
 
 interface EditPageProps {
   pollId: string;
@@ -22,7 +22,7 @@ export const EditPage = async ({ pollId, env, jwtPayload }: EditPageProps) => {
       </section>
     );
   }
-  const poll: import("./PollPage").PollData = await res.json();
+  const poll: PollData = await res.json();
   if (!poll || poll.ownerId !== (jwtPayload && jwtPayload.sub)) {
     return (
       <section className="rounded-xl shadow p-10 flex flex-col items-center bg-card max-w-lg mx-auto mt-10">

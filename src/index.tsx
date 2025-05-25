@@ -4,9 +4,10 @@ import { LandingPage } from "./components/LandingPage";
 import { Layout } from "./components/Layout";
 import { anonJwtCookie } from "./middleware/anonJwtCookie";
 import { CreatePage } from "./components/CreatePage";
-import { PollData, PollPage } from "./components/PollPage";
+import { PollPage } from "./components/PollPage";
 import { EditPage } from "./components/EditPage";
 import { ConfirmDeletePage } from "./components/ConfirmDeletePage";
+import { PollData } from "./types/PollData";
 
 export { PollDurableObject } from "./PollDurableObject";
 
@@ -15,13 +16,14 @@ const app = new Hono<{ Bindings: Bindings }>();
 
 app.use("*", anonJwtCookie);
 
-app.get("/", (c) =>
-  c.html(
+app.get("/", (c) => {
+  const jwtPayload = c.get('jwtPayload');
+  return c.html(
     <Layout>
-      <LandingPage />
+      <LandingPage env={c.env} jwtPayload={jwtPayload} />
     </Layout>
-  )
-);
+  );
+});
 
 app.get("/create", (c) =>
   c.html(
@@ -91,6 +93,7 @@ app.post("/api/poll/create", async (c) => {
     ttl,
     createdAt: Date.now(),
     ownerId,
+    votes: Array(options.length).fill(0), // Initialize votes for each option
   };
 
   await stub.fetch("https://dummy/state", {
@@ -218,6 +221,25 @@ app.get("/api/my-polls", async (c) => {
     }
   }
   return c.json(polls);
+});
+
+app.post("/api/poll/:pollId/vote", async (c) => {
+  const pollId = c.req.param("pollId");
+  const { optionIndex } = await c.req.json();
+  if (typeof optionIndex !== "number") {
+    return c.json({ error: "Invalid option index" }, 400);
+  }
+  const durableId = c.env.POLL_DO.idFromString(pollId);
+  const stub = c.env.POLL_DO.get(durableId);
+  const voteRes = await stub.fetch("https://dummy/vote", {
+    method: "POST",
+    body: JSON.stringify({ optionIndex }),
+  });
+  if (!voteRes.ok) {
+    return c.json({ error: "Vote failed" }, 500);
+  }
+  const updatedPoll = await voteRes.json();
+  return c.json(updatedPoll);
 });
 
 showRoutes(app, { verbose: true });
