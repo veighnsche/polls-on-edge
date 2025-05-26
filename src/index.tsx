@@ -18,6 +18,7 @@ import { EditPage } from './components/EditPage';
 import { LandingPage } from './components/LandingPage';
 import { Layout } from './components/Layout';
 import { PollPage } from './components/PollPage';
+import { PollResultsPage } from './components/PollResultsPage';
 import { anonJwtCookie } from './middleware/anonJwtCookie';
 import * as pollService from './services/pollService';
 
@@ -99,6 +100,31 @@ app.get('/poll/:pollId', c => {
 	const pollId = c.req.param('pollId');
 	const jwtPayload = c.get('jwtPayload');
 	return c.render(<PollPage pollId={pollId} env={c.env} jwtPayload={jwtPayload} />);
+});
+
+app.get('/poll/:pollId/results', async c => {
+	const pollId = c.req.param('pollId');
+	let poll: any = null;
+	let error: string | null = null;
+	try {
+		const durableId = c.env.POLL_DO.idFromString(pollId);
+		const stub = c.env.POLL_DO.get(durableId);
+		const res = await stub.fetch('https://dummy/state');
+		if (!res.ok) throw new Error('Poll not found');
+		poll = await res.json();
+	} catch (err: any) {
+		error = err.message || 'Error fetching poll';
+	}
+	if (error || !poll) {
+		return c.html(
+			<section className="rounded-xl shadow p-10 flex flex-col items-center bg-card max-w-lg mx-auto mt-10">
+				<h1 className="text-2xl font-bold text-red-600 mb-4">Error</h1>
+				<p className="text-lg text-muted">{error || 'Poll not found'}</p>
+			</section>,
+			404
+		);
+	}
+	return c.render(<PollResultsPage poll={poll} />);
 });
 
 app.get('/poll/:pollId/edit', c => {
