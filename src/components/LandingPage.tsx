@@ -2,7 +2,7 @@ import type { FC } from 'hono/jsx';
 import { PollsList } from './PollsList';
 
 interface LandingPageProps {
-	env: { POLL_INDEX: KVNamespace; POLL_DO: DurableObjectNamespace };
+	env: { USER_DO: DurableObjectNamespace; POLL_DO: DurableObjectNamespace };
 	jwtPayload: any;
 }
 

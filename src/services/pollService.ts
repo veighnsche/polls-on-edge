@@ -87,7 +87,7 @@ export async function createPoll({
 	if (!res.ok) return { error: await res.text() };
 
 	/* 2. register ownership in UserDO --------------------------------------- */
-	await userStub.fetch('/add-poll', {
+	await userStub.fetch('https://dummy/add-poll', {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({ pollId: id }),
@@ -170,7 +170,7 @@ export async function deletePoll({
 	if (!resDel.ok) return { ok: false, error: await resDel.text() };
 
 	/* update UserDO (remove pollId) */
-	await userStub.fetch('/remove-poll', {
+	await userStub.fetch('https://dummy/remove-poll', {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({ pollId }),

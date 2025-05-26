@@ -1,17 +1,24 @@
 import { PollData } from '../types/PollData';
 
 interface PollsListProps {
-	env: { POLL_INDEX: KVNamespace; POLL_DO: DurableObjectNamespace };
+	env: { USER_DO: DurableObjectNamespace; POLL_DO: DurableObjectNamespace };
 	jwtPayload: any;
 }
 
 export const PollsList = async ({ env, jwtPayload }: PollsListProps) => {
 	const ownerId = jwtPayload && typeof jwtPayload.sub === 'string' ? jwtPayload.sub : 'unknown';
-	const pollIds = await env.POLL_INDEX.get(ownerId, 'json');
+	const userDurableId = env.USER_DO.idFromName(ownerId);
+	const userStub = env.USER_DO.get(userDurableId);
+	const userRes = await userStub.fetch('https://dummy/state');
+	let pollIds: string[] = [];
+	if (userRes.ok) {
+		const userData: { ownedPollIds: string[] } = await userRes.json();
+		pollIds = Array.isArray(userData.ownedPollIds) ? userData.ownedPollIds : [];
+	}
 	const polls: PollData[] = [];
 	if (Array.isArray(pollIds) && pollIds.length > 0) {
 		for (const pollId of pollIds) {
-			const durableId = env.POLL_DO.idFromString(pollId);
+			const durableId = env.POLL_DO.idFromName(pollId);
 			const stub = env.POLL_DO.get(durableId);
 			const res = await stub.fetch('https://dummy/state');
 			if (res.ok) {

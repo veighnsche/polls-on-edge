@@ -7,7 +7,6 @@
  * • showRoutes guarded by a Miniflare-only flag (no `process`/Node globals)
  */
 
-import { zValidator } from '@hono/zod-validator';
 import { Hono, type Context, type Next } from 'hono';
 import { showRoutes } from 'hono/dev';
 import { jsxRenderer } from 'hono/jsx-renderer';
@@ -22,7 +21,7 @@ import { PollResultsPage } from './components/PollResultsPage';
 import { anonJwtCookie } from './middleware/anonJwtCookie';
 import * as pollService from './services/pollService';
 
-import { PollFormSchema, VoteRequestBodySchema, type PollForm } from './types/PollData';
+import { PollFormSchema, type PollForm } from './types/PollData';
 
 export { PollDurableObject } from './durable-objects/PollDurableObject';
 export { UserDurableObject } from './durable-objects/UserDurableObject';
@@ -41,7 +40,7 @@ declare module 'hono' {
 
 type Bindings = {
 	POLL_DO: DurableObjectNamespace;
-	POLL_INDEX: KVNamespace;
+	USER_DO: DurableObjectNamespace;
 };
 
 const app = new Hono<{ Bindings: Bindings }>();
@@ -121,7 +120,7 @@ app.get('/poll/:pollId/results', async c => {
 				<h1 className="text-2xl font-bold text-red-600 mb-4">Error</h1>
 				<p className="text-lg text-muted">{error || 'Poll not found'}</p>
 			</section>,
-			404
+			404,
 		);
 	}
 	return c.render(<PollResultsPage poll={poll} />);
@@ -217,12 +216,33 @@ app.post('/api/poll/:pollId/delete', async c => {
 	return c.redirect('/', 303);
 });
 
+// Hono route: POST /poll/:pollId/vote
+// Refactored for clarity, type‑safety, and minimal duplication.
+
 app.post('/poll/:pollId/vote', async c => {
 	const pollId = c.req.param('pollId');
-	const form = await c.req.parseBody?.() || (await c.req.formData?.());
-	const optionIndex = Number(form?.get ? form.get('optionIndex') : form['optionIndex']);
-	const jwt = (c.req as any).cookie ? (c.req as any).cookie('jwt') : undefined;
+
+	// --- Parse the incoming body -------------------------------------------------
+	// Prefer FormData when available (multipart/form‑data); otherwise fall back to
+	// Hono’s parseBody() helper; default to an empty object so later code is safe.
+	const form: FormData | Record<string, unknown> =
+		typeof c.req.formData === 'function' ? await c.req.formData() : typeof c.req.parseBody === 'function' ? await c.req.parseBody() : {};
+
+	// --- Extract optionIndex from the parsed form --------------------------------
+	const rawOptionIndex: unknown =
+		typeof (form as FormData).get === 'function' ? (form as FormData).get('optionIndex') : (form as Record<string, unknown>).optionIndex;
+
+	const optionIndex = Number(rawOptionIndex);
+	if (!Number.isInteger(optionIndex)) {
+		return c.text('Invalid option index', 400);
+	}
+
+	// --- Retrieve JWT from cookies (if cookie middleware is in use) --------------
+	const jwt = (c.req as { cookie?: (name: string) => string | undefined }).cookie?.('jwt');
+
+	// --- Business Logic ----------------------------------------------------------
 	await pollService.votePoll({ pollId, optionIndex, env: c.env, jwt });
+
 	return c.redirect(`/poll/${pollId}`, 303);
 });
 
