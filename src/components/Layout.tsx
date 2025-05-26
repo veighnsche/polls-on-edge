@@ -5,7 +5,54 @@ export const Layout: FC = props => (
 		<head>
 			<meta charSet="utf-8" />
 			<meta name="viewport" content="width=device-width, initial-scale=1" />
-			<title>Polls on Edge</title>
+			<title>Polls on Edge – Real-Time Polls with Edge Rendering</title>
+			<meta
+				name="description"
+				content="Create, share, and participate in real-time polls instantly. Polls on Edge leverages edge rendering for lightning-fast, scalable polling experiences. No sign-up required – just create, vote, and share."
+			/>
+			<meta
+				name="keywords"
+				content="polls, real-time polls, edge rendering, instant polls, voting, create poll, online poll, scalable polls, fast polling, poll app"
+			/>
+
+			{/* Open Graph / Facebook */}
+			<meta property="og:title" content="Polls on Edge – Real-Time Polls with Edge Rendering" />
+			<meta
+				property="og:description"
+				content="Create, share, and participate in real-time polls instantly. Lightning-fast, scalable polling for everyone."
+			/>
+			<meta property="og:type" content="website" />
+			<meta property="og:url" content="https://edgypolls.com/" />
+			<meta property="og:image" content="https://edgypolls.com/og-image.png" />
+
+			{/* Twitter Card */}
+			<meta name="twitter:card" content="summary_large_image" />
+			<meta name="twitter:title" content="Polls on Edge – Real-Time Polls with Edge Rendering" />
+			<meta
+				name="twitter:description"
+				content="Create, share, and participate in real-time polls instantly. Lightning-fast, scalable polling for everyone."
+			/>
+			<meta name="twitter:image" content="https://edgypolls.com/og-image.png" />
+
+			{/* JSON-LD Structured Data */}
+			<script
+				type="application/ld+json"
+				dangerouslySetInnerHTML={{
+					__html: `{
+					  "@context": "https://schema.org",
+					  "@type": "WebSite",
+					  "name": "Polls on Edge",
+					  "url": "https://edgypolls.com/",
+					  "description": "Create, share, and participate in real-time polls instantly. Polls on Edge leverages edge rendering for lightning-fast, scalable polling experiences.",
+					  "potentialAction": {
+					    "@type": "SearchAction",
+					    "target": "https://edgypolls.com/?q={search_term_string}",
+					    "query-input": "required name=search_term_string"
+					  }
+					}
+				}`,
+				}}
+			/>
 			<link rel="stylesheet" href="/dist/styles.css" />
 		</head>
 		<body>
