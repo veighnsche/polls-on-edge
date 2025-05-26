@@ -19,14 +19,25 @@ export const PollForm: FC<PollFormProps> = ({
 	onSubmitAction = '/api/poll/create',
 	submitLabel = 'Create Poll',
 }) => {
-	console.log('[PollForm] props:', { initialQuestion, initialOptions, initialTTL, onSubmitAction, submitLabel });
+	console.log('[PollForm] Rendered with props:', { initialQuestion, initialOptions, initialTTL, onSubmitAction, submitLabel });
 	return (
 		<form
 			method="post"
 			action={onSubmitAction}
 			className="w-full max-w-lg flex flex-col gap-6"
-			onSubmit={() => {
+			onSubmit={e => {
 				console.log('[PollForm] Form submitted');
+				const form = e.target as HTMLFormElement;
+				const data = new FormData();
+				data.append('question', form.question.value);
+				data.append('option1', form.option1.value);
+				data.append('option2', form.option2.value);
+				data.append('option3', form.option3.value);
+				data.append('option4', form.option4.value);
+				data.append('option5', form.option5.value);
+				data.append('ttl', form.ttl.value);
+				const formDataObj = Object.fromEntries(data.entries());
+				console.log('[PollForm] Form data:', formDataObj);
 			}}
 		>
 			{/* Poll Question */}

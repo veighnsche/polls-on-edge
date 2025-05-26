@@ -7,26 +7,34 @@ interface PollsListProps {
 
 export const PollsList = async ({ env, jwtPayload }: PollsListProps) => {
 	const ownerId = jwtPayload && typeof jwtPayload.sub === 'string' ? jwtPayload.sub : 'unknown';
+	console.log('[PollsList] ownerId:', ownerId);
 	const userDurableId = env.USER_DO.idFromName(ownerId);
 	const userStub = env.USER_DO.get(userDurableId);
 	const userRes = await userStub.fetch('https://dummy/state');
+	console.log('[PollsList] userRes:', userRes);
 	let pollIds: string[] = [];
 	if (userRes.ok) {
 		const userData: { ownedPollIds: string[] } = await userRes.json();
+		console.log('[PollsList] userData:', userData);
 		pollIds = Array.isArray(userData.ownedPollIds) ? userData.ownedPollIds : [];
 	}
+	console.log('[PollsList] pollIds:', pollIds);
 	const polls: PollData[] = [];
 	if (Array.isArray(pollIds) && pollIds.length > 0) {
 		for (const pollId of pollIds) {
+			console.log('[PollsList] Fetching pollId:', pollId);
 			const durableId = env.POLL_DO.idFromName(pollId);
 			const stub = env.POLL_DO.get(durableId);
 			const res = await stub.fetch('https://dummy/state');
+			console.log('[PollsList] Poll fetch res for', pollId, ':', res);
 			if (res.ok) {
 				const poll: PollData = await res.json();
+				console.log('[PollsList] Poll data for', pollId, ':', poll);
 				if (poll && poll.ownerId === ownerId) polls.push(poll);
 			}
 		}
 	}
+	console.log('[PollsList] Final polls:', polls);
 	return (
 		<div className="w-full mt-8">
 			<h2 className="text-xl font-bold mb-4 text-foreground">Your Polls</h2>

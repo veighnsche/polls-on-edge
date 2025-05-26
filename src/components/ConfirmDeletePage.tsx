@@ -10,7 +10,7 @@ export const ConfirmDeletePage = async ({ pollId, env, jwtPayload }: ConfirmDele
 	let poll: PollData | null = null;
 	let error: string | null = null;
 	try {
-		const durableId = env.POLL_DO.idFromString(pollId);
+		const durableId = env.POLL_DO.idFromName(pollId);
 		const stub = env.POLL_DO.get(durableId);
 		const res = await stub.fetch('https://dummy/state');
 		if (!res.ok) throw new Error('Poll not found');

@@ -7,6 +7,7 @@ interface LandingPageProps {
 }
 
 export const LandingPage: FC<LandingPageProps> = ({ env, jwtPayload }) => {
+	console.log('[LandingPage] Rendered', { env, jwtPayload });
 	return (
 		<section className="rounded-xl shadow p-10 flex flex-col items-center bg-card">
 			<h1 className="text-3xl sm:text-4xl font-bold mb-4 text-primary text-center">Welcome to Polls on Edge</h1>
@@ -26,6 +27,7 @@ export const LandingPage: FC<LandingPageProps> = ({ env, jwtPayload }) => {
 				Create Your Poll
 			</a>
 			{/* Polls List Component */}
+			{console.log('[LandingPage] Rendering PollsList with:', { env, jwtPayload })}
 			<PollsList env={env} jwtPayload={jwtPayload} />
 		</section>
 	);

@@ -1,6 +1,17 @@
+/**
+ * userDurableObject.ts – refined implementation of **UserDurableObject**
+ * ---------------------------------------------------------------------
+ * ▸ Collapses repetitive logic (CORS, JSON helpers, load/save) into utilities
+ * ▸ Introduces a tiny router table + handler helpers for clarity
+ * ▸ Provides strongly‑typed helpers (`Ok`, `Err`) for consistent returns
+ * ▸ Keeps the public storage shape 100% backward‑compatible
+ */
+
 import { z } from 'zod';
 
-/* ─────────────────────────────── types ─────────────────────────────── */
+/* ------------------------------------------------------------------------- */
+// Types
+/* ------------------------------------------------------------------------- */
 
 export interface UserData {
 	ownedPollIds: string[];
@@ -11,18 +22,19 @@ export interface Env {
 	JWT_SECRET: string;
 }
 
-/* ────────────────────────────── zod schemas ─────────────────────────── */
+/* ------------------------------------------------------------------------- */
+// Schemas
+/* ------------------------------------------------------------------------- */
 
-const AddPollSchema = z.object({
-	pollId: z.string().min(1),
-});
-
+const AddPollSchema = z.object({ pollId: z.string().min(1) });
 const AddVoteSchema = z.object({
 	pollId: z.string().min(1),
 	optionIndex: z.number().int().min(0),
 });
 
-/* ────────────────────────────── constants ────────────────────────────── */
+/* ------------------------------------------------------------------------- */
+// Constants & helpers
+/* ------------------------------------------------------------------------- */
 
 const DEFAULT_USER: UserData = { ownedPollIds: [], votes: {} };
 
@@ -32,80 +44,114 @@ const CORS_HEADERS = {
 	'Access-Control-Allow-Headers': 'Content-Type, Authorization',
 } as const;
 
-/* ─────────────────────────── durable object ─────────────────────────── */
+const json = (body: unknown, status = 200) =>
+	new Response(JSON.stringify(body), {
+		status,
+		headers: { 'Content-Type': 'application/json', ...CORS_HEADERS },
+	});
+
+const text = (body: string, status = 200) => new Response(body, { status, headers: CORS_HEADERS });
+
+/* ── Result helper ── */
+
+type Ok<T = void> = { ok: true; data: T };
+type Err = { ok: false; error: string };
+
+type Result<T = void> = Ok<T> | Err;
+
+const ok = <T = void>(data: T): Ok<T> => ({ ok: true, data });
+const err = (error: string): Err => ({ ok: false, error });
+
+/* ------------------------------------------------------------------------- */
+// Handler type
+/* ------------------------------------------------------------------------- */
+
+type Handler<T = void> = (req: Request, url: URL) => Promise<Result<T>>;
+
+/* ------------------------------------------------------------------------- */
+// Durable Object implementation
+/* ------------------------------------------------------------------------- */
 
 export class UserDurableObject {
 	constructor(private state: DurableObjectState) {}
 
-	/* ───────────────────────── helpers ───────────────────────── */
+	/* ─────────── high‑level storage helpers ─────────── */
 
-	private json(body: unknown, status = 200) {
-		return new Response(JSON.stringify(body), {
-			status,
-			headers: { 'Content-Type': 'application/json', ...CORS_HEADERS },
-		});
+	private async load(): Promise<UserData> {
+		return (
+			(await this.state.storage.get<UserData>('user')) ?? {
+				...DEFAULT_USER,
+			}
+		);
 	}
 
-	private text(body: string, status = 200) {
-		return new Response(body, { status, headers: CORS_HEADERS });
+	private save(data: UserData) {
+		return this.state.storage.put('user', data);
 	}
 
-	/* ───────────────────────── endpoint handler ───────────────────────── */
+	/* ------------------------------------------------------------------ */
+	// Router handlers
+	/* ------------------------------------------------------------------ */
+
+	private readonly handlers: Record<string, Handler<any>> = {
+		/* GET /state */
+		'GET /state': async () => ok(await this.load()),
+
+		/* POST /add-poll */
+		'POST /add-poll': async req => {
+			const parse = AddPollSchema.safeParse(await req.json());
+			if (!parse.success) return err(JSON.stringify(parse.error.format()));
+
+			const data = await this.load();
+			if (!data.ownedPollIds.includes(parse.data.pollId)) {
+				data.ownedPollIds.push(parse.data.pollId);
+				await this.save(data);
+			}
+			return ok(undefined);
+		},
+
+		/* POST /add-vote */
+		'POST /add-vote': async req => {
+			const parse = AddVoteSchema.safeParse(await req.json());
+			if (!parse.success) return err(JSON.stringify(parse.error.format()));
+
+			const data = await this.load();
+			data.votes[parse.data.pollId] = parse.data.optionIndex;
+			await this.save(data);
+			return ok(undefined);
+		},
+
+		/* GET /has-voted */
+		'GET /has-voted': async (_req, url) => {
+			const pollId = url.searchParams.get('pollId');
+			if (!pollId) return err('Missing pollId');
+
+			const data = await this.load();
+			const userVote = data.votes[pollId];
+			return ok({
+				hasVoted: userVote !== undefined,
+				userVote: userVote ?? null,
+			});
+		},
+	};
+
+	/* ------------------------------------------------------------------ */
+	// fetch entrypoint
+	/* ------------------------------------------------------------------ */
 
 	async fetch(request: Request): Promise<Response> {
 		const { method } = request;
 		const url = new URL(request.url);
+		const routeKey = `${method.toUpperCase()} ${url.pathname}`;
+		console.log('[UserDO] ', routeKey);
 
-		/* Handle CORS pre‑flight */
+		// Handle CORS pre‑flight early
 		if (method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS_HEADERS });
 
-		/* Read (or initialise) user blob once – most routes need it */
-		const load = async () => (await this.state.storage.get<UserData>('user')) ?? { ...DEFAULT_USER };
-		const save = (data: UserData) => this.state.storage.put('user', data);
+		const handler = this.handlers[routeKey];
+		if (!handler) return text('Not found', 404);
 
-		switch (`${method.toUpperCase()} ${url.pathname}`) {
-			/* ─────────────── GET /state ─────────────── */
-			case 'GET /state': {
-				return this.json(await load());
-			}
-
-			/* ─────────────── POST /add-poll ─────────────── */
-			case 'POST /add-poll': {
-				const parse = AddPollSchema.safeParse(await request.json());
-				if (!parse.success) return this.json(parse.error.format(), 400);
-
-				const data = await load();
-				if (!data.ownedPollIds.includes(parse.data.pollId)) {
-					data.ownedPollIds.push(parse.data.pollId);
-					await save(data);
-				}
-				return this.json({ success: true });
-			}
-
-			/* ─────────────── POST /add-vote ─────────────── */
-			case 'POST /add-vote': {
-				const parse = AddVoteSchema.safeParse(await request.json());
-				if (!parse.success) return this.json(parse.error.format(), 400);
-
-				const data = await load();
-				data.votes[parse.data.pollId] = parse.data.optionIndex;
-				await save(data);
-				return this.json({ success: true });
-			}
-
-			/* ─────────────── GET /has-voted ─────────────── */
-			case 'GET /has-voted': {
-				const pollId = url.searchParams.get('pollId');
-				if (!pollId) return this.json({ error: 'Missing pollId' }, 400);
-
-				const data = await load();
-				const userVote = data.votes[pollId];
-				return this.json({ hasVoted: userVote !== undefined, userVote: userVote ?? null });
-			}
-
-			/* ─────────────── default ─────────────── */
-			default:
-				return this.text('Not found', 404);
-		}
+		const result = await handler(request, url);
+		return result.ok ? json(result.data ?? { success: true }) : json({ error: result.error }, 400);
 	}
 }

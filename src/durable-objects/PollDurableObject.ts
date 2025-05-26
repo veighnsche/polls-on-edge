@@ -104,6 +104,7 @@ export class PollDurableObject {
 
 	async fetch(request: Request): Promise<Response> {
 		const url = new URL(request.url);
+		console.log(`[PollDurableObject] fetch: ${request.method} ${url.pathname}`);
 
 		/* CORS pre-flight */
 		if (request.method === 'OPTIONS') {
@@ -114,6 +115,7 @@ export class PollDurableObject {
 			/* ─────────────── read current poll ─────────────── */
 			case 'GET /state': {
 				const poll = await this.state.storage.get<PollData>('poll');
+				console.log(`[PollDurableObject] GET /state, poll:`, poll);
 				return poll ? this.json(poll) : this.text('Not found', 404);
 			}
 
@@ -121,20 +123,33 @@ export class PollDurableObject {
 			case 'PUT /state': {
 				/* owner must be authenticated */
 				const jwt = await this.getJwt(request);
-				if (!jwt) return this.text('Unauthorized', 401);
+				if (!jwt) {
+					console.log(`[PollDurableObject] PUT /state: Unauthorized`);
+					return this.text('Unauthorized', 401);
+				}
 
-				const parsed = PollDataSchema.safeParse(await request.json());
-				if (!parsed.success) return this.json(parsed.error.format(), 400);
+				const body = await request.json();
+				console.log(`[PollDurableObject] PUT /state: body:`, body);
+				const parsed = PollDataSchema.safeParse(body);
+				if (!parsed.success) {
+					console.log(`[PollDurableObject] PUT /state: validation failed`, parsed.error.format());
+					return this.json(parsed.error.format(), 400);
+				}
 
 				const poll = parsed.data;
-				if (poll.ownerId !== jwt.sub) return this.text('ownerId must match JWT', 403);
+				if (poll.ownerId !== jwt.sub) {
+					console.log(`[PollDurableObject] PUT /state: ownerId mismatch jwt.sub=${jwt.sub}, poll.ownerId=${poll.ownerId}`);
+					return this.text('ownerId must match JWT', 403);
+				}
 
 				await this.state.storage.put('poll', poll);
-				return this.text('Created', 201);
+				console.log(`[PollDurableObject] PUT /state: poll saved`, poll);
+				return this.json({ ok: true }, 201);
 			}
 
 			/* ─────────────── update poll ─────────────── */
 			case 'PATCH /state': {
+				console.log(`[PollDurableObject] PATCH /state`);
 				const jwt = await this.getJwt(request);
 				if (!jwt) return this.text('Unauthorized', 401);
 
@@ -146,16 +161,23 @@ export class PollDurableObject {
 				}
 				if (poll.ownerId !== jwt.sub) return this.text('Forbidden', 403);
 
-				const parsed = PatchPollSchema.safeParse(await request.json());
-				if (!parsed.success) return this.json(parsed.error.format(), 400);
+				const patchBody = await request.json();
+				console.log(`[PollDurableObject] PATCH /state: patchBody`, patchBody);
+				const parsed = PatchPollSchema.safeParse(patchBody);
+				if (!parsed.success) {
+					console.log(`[PollDurableObject] PATCH /state: validation failed`, parsed.error.format());
+					return this.json(parsed.error.format(), 400);
+				}
 
 				const updated: PollData = { ...poll, ...parsed.data };
 				await this.state.storage.put('poll', updated);
+				console.log(`[PollDurableObject] PATCH /state: poll updated`, updated);
 				return this.json(updated);
 			}
 
 			/* ─────────────── delete poll ─────────────── */
 			case 'DELETE /delete': {
+				console.log(`[PollDurableObject] DELETE /delete`);
 				const jwt = await this.getJwt(request);
 				if (!jwt) return this.text('Unauthorized', 401);
 
@@ -168,17 +190,24 @@ export class PollDurableObject {
 				if (poll.ownerId !== jwt.sub) return this.text('Forbidden', 403);
 
 				await this.state.storage.deleteAll();
-				return this.text('Deleted');
+				console.log(`[PollDurableObject] DELETE /delete: poll deleted`);
+				return this.json({ ok: true }, 200);
 			}
 
 			/* ─────────────── vote ─────────────── */
 			case 'POST /vote': {
+				console.log(`[PollDurableObject] POST /vote`);
 				/* authenticate & parse body first (cheap) */
 				const jwt = await this.getJwt(request);
 				if (!jwt) return this.text('Unauthorized', 401);
 
-				const parsedBody = VoteRequestSchema.safeParse(await request.json());
-				if (!parsedBody.success) return this.json(parsedBody.error.format(), 400);
+				const voteBody = await request.json();
+				console.log(`[PollDurableObject] POST /vote: body`, voteBody);
+				const parsedBody = VoteRequestSchema.safeParse(voteBody);
+				if (!parsedBody.success) {
+					console.log(`[PollDurableObject] POST /vote: validation failed`, parsedBody.error.format());
+					return this.json(parsedBody.error.format(), 400);
+				}
 				const { optionIndex } = parsedBody.data;
 
 				/* Ask UserDO if this user already voted in this poll */

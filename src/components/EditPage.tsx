@@ -13,7 +13,7 @@ interface EditPageProps {
  */
 export const EditPage = async ({ pollId, env, jwtPayload }: EditPageProps) => {
 	console.log('[EditPage] props:', { pollId, env, jwtPayload });
-	const durableId = env.POLL_DO.idFromString(pollId);
+	const durableId = env.POLL_DO.idFromName(pollId);
 	const stub = env.POLL_DO.get(durableId);
 	console.log('[EditPage] Fetching poll state for id:', pollId);
 	const res = await stub.fetch('https://dummy/state');
