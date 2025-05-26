@@ -9,6 +9,10 @@ export const PollDataSchema = z.object({
 	ownerId: z.string(),
 	votes: z.array(z.number()),
 });
+
+// Optionally attached by backend for current user
+export type PollDataWithUserVote = PollData & { userVote?: number | null };
+
 export type PollData = z.infer<typeof PollDataSchema>;
 
 export const VoteRequestBodySchema = z.object({

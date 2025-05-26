@@ -1,21 +1,15 @@
-interface PollPageProps {
-	pollId: string;
-	env: { POLL_DO: DurableObjectNamespace };
-	jwtPayload: any;
-}
-
-import { PollData } from '../types/PollData';
+import { PollDataWithUserVote } from '../types/PollData';
 import { PollAdminPage } from './PollAdminPage';
 import { PollUserPage } from './PollUserPage';
 
 interface PollPageProps {
 	pollId: string;
-	env: { POLL_DO: DurableObjectNamespace };
+	env: { POLL_DO: DurableObjectNamespace; USER_DO: DurableObjectNamespace };
 	jwtPayload: any;
 }
 
 export const PollPage = async ({ pollId, env, jwtPayload }: PollPageProps) => {
-	let poll: PollData | null = null;
+	let poll: PollDataWithUserVote | null = null;
 	let error: string | null = null;
 	try {
 		const durableId = env.POLL_DO.idFromString(pollId);
@@ -41,6 +35,18 @@ export const PollPage = async ({ pollId, env, jwtPayload }: PollPageProps) => {
 				<h1 className="text-2xl font-bold mb-4">Poll not found</h1>
 			</section>
 		);
+	}
+	if (jwtPayload?.sub) {
+		try {
+			const userStub = env.USER_DO.get(env.USER_DO.idFromName(jwtPayload.sub));
+			const url = new URL('https://dummy/has-voted');
+			url.searchParams.set('pollId', poll.id);
+			const uv = await userStub.fetch(url.toString(), { cf: { cacheTtl: 0 } });
+			const { userVote }: { userVote: number } = await uv.json();
+			poll.userVote = userVote;
+		} catch {
+			// ignore errors for user vote enrichment
+		}
 	}
 	const isOwner = jwtPayload && jwtPayload.sub === poll.ownerId;
 	return isOwner ? <PollAdminPage poll={poll} /> : <PollUserPage poll={poll} />;

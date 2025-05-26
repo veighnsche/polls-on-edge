@@ -1,28 +1,26 @@
-/*
- * pollService.ts – hardened service‑layer helpers
- * ------------------------------------------------------------
- * • Requires a real JWT for every mutating call.
- * • Consistent error handling – bubbles DO response text.
- * • DRY header builder.
- * • Helpful console logs gated behind `DEBUG` env var.
+/**
+ * pollService.ts – service helpers wired to **PollDurableObject** + **UserDurableObject**
+ * -------------------------------------------------------------------------------------
+ * • POLL_DO  – per-poll state / vote counters
+ * • USER_DO  – per-user state (ownedPollIds, votes)
  */
 
 import type { PollData } from '../types/PollData';
-import { StatusCodes as HTTP } from './utils/status'; // tiny enum you can add–optional
+import { StatusCodes as HTTP } from './utils/status';
 
 /* ------------------------------------------------------------------------- */
-// Types
+// Types / bindings
 /* ------------------------------------------------------------------------- */
 
 type Env = {
 	POLL_DO: DurableObjectNamespace;
-	POLL_INDEX: KVNamespace;
+	USER_DO: DurableObjectNamespace;
 };
 
 type JwtPayload = { sub?: string };
 
 /* ------------------------------------------------------------------------- */
-// Internal helpers
+// Internals
 /* ------------------------------------------------------------------------- */
 
 function debug(...args: unknown[]) {
@@ -37,6 +35,8 @@ const authHeaders = (jwt: string): HeadersInit => ({
 function requireJwt(jwt?: string): asserts jwt is string {
 	if (!jwt) throw new Error('JWT is required for this operation');
 }
+
+const getUserStub = (env: Env, userId: string) => env.USER_DO.get(env.USER_DO.idFromName(userId));
 
 /* ------------------------------------------------------------------------- */
 // Service API
@@ -63,7 +63,8 @@ export async function createPoll({
 
 	const durableId = env.POLL_DO.newUniqueId();
 	const id = durableId.toString();
-	const stub = env.POLL_DO.get(durableId);
+	const pollStub = env.POLL_DO.get(durableId);
+	const userStub = getUserStub(env, ownerId);
 
 	const pollData: PollData = {
 		id,
@@ -77,19 +78,20 @@ export async function createPoll({
 
 	debug('[SERVICE] createPoll ->', pollData);
 
-	const res = await stub.fetch('https://dummy/state', {
+	/* 1. create poll --------------------------------------------------------- */
+	const res = await pollStub.fetch('https://dummy/state', {
 		method: 'PUT',
 		body: JSON.stringify(pollData),
 		headers: authHeaders(jwt),
 	});
-
 	if (!res.ok) return { error: await res.text() };
 
-	// Maintain per‑user index ---------------------------------------------------
-	const existing: string[] | null = await env.POLL_INDEX.get(ownerId, 'json');
-	const pollIds = existing ?? [];
-	pollIds.push(id);
-	await env.POLL_INDEX.put(ownerId, JSON.stringify(pollIds));
+	/* 2. register ownership in UserDO --------------------------------------- */
+	await userStub.fetch('/add-poll', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ pollId: id }),
+	});
 
 	return { id };
 }
@@ -115,19 +117,19 @@ export async function editPoll({
 	const ownerId = jwtPayload.sub;
 	if (!ownerId) return { ok: false, error: 'Missing ownerId in JWT' };
 
-	const stub = env.POLL_DO.get(env.POLL_DO.idFromString(pollId));
+	const pollStub = env.POLL_DO.get(env.POLL_DO.idFromString(pollId));
 
-	// Fetch current state -------------------------------------------------------
-	const current = await stub.fetch('https://dummy/state');
+	/* pull current state for auth check */
+	const current = await pollStub.fetch('https://dummy/state');
 	if (current.status === HTTP.NOT_FOUND) return { ok: false, error: 'Poll not found' };
 
 	const poll: PollData = await current.json();
 	if (poll.ownerId !== ownerId) return { ok: false, error: 'Unauthorized' };
 
-	const updated: PollData = { ...poll, question, options, ttl };
-	const res = await stub.fetch('https://dummy/state', {
+	const patch = { question, options, ttl };
+	const res = await pollStub.fetch('https://dummy/state', {
 		method: 'PATCH',
-		body: JSON.stringify(updated),
+		body: JSON.stringify(patch),
 		headers: authHeaders(jwt),
 	});
 
@@ -150,24 +152,29 @@ export async function deletePoll({
 	const ownerId = jwtPayload.sub;
 	if (!ownerId) return { ok: false, error: 'Missing ownerId in JWT' };
 
-	const stub = env.POLL_DO.get(env.POLL_DO.idFromString(pollId));
+	const pollStub = env.POLL_DO.get(env.POLL_DO.idFromString(pollId));
+	const userStub = getUserStub(env, ownerId);
 
-	const resState = await stub.fetch('https://dummy/state');
+	/* verify poll exists and user owns it */
+	const resState = await pollStub.fetch('https://dummy/state');
 	if (resState.status === HTTP.NOT_FOUND) return { ok: false, error: 'Poll not found' };
 
 	const poll: PollData = await resState.json();
 	if (poll.ownerId !== ownerId) return { ok: false, error: 'Unauthorized' };
 
-	const resDel = await stub.fetch('https://dummy/delete', {
+	/* delete in PollDO */
+	const resDel = await pollStub.fetch('https://dummy/delete', {
 		method: 'DELETE',
 		headers: authHeaders(jwt),
 	});
 	if (!resDel.ok) return { ok: false, error: await resDel.text() };
 
-	// Update index -------------------------------------------------------------
-	const existing: string[] | null = await env.POLL_INDEX.get(ownerId, 'json');
-	const updatedIds = existing ? existing.filter(pid => pid !== pollId) : [];
-	await env.POLL_INDEX.put(ownerId, JSON.stringify(updatedIds));
+	/* update UserDO (remove pollId) */
+	await userStub.fetch('/remove-poll', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ pollId }),
+	});
 
 	return { ok: true };
 }
@@ -181,20 +188,34 @@ export async function votePoll({
 	pollId: string;
 	optionIndex: number;
 	env: Env;
-	jwt?: string; // anonymous voting supported? pass undefined to skip auth header
+	jwt?: string; // pass undefined for anonymous vote
 }): Promise<{ ok: boolean; updatedPoll?: PollData; error?: string }> {
-	const stub = env.POLL_DO.get(env.POLL_DO.idFromString(pollId));
+	const pollStub = env.POLL_DO.get(env.POLL_DO.idFromString(pollId));
 
-	const res = await stub.fetch('https://dummy/vote', {
+	/* 1. submit vote to PollDO */
+	const res = await pollStub.fetch('https://dummy/vote', {
 		method: 'POST',
 		body: JSON.stringify({ optionIndex }),
 		headers: {
 			...(jwt ? authHeaders(jwt) : { 'Content-Type': 'application/json' }),
 		},
 	});
-
 	if (!res.ok) return { ok: false, error: await res.text() };
 
 	const updatedPoll: PollData = await res.json();
+
+	/* 2. persist per-user vote (if authenticated) */
+	if (jwt) {
+		const { sub } = JSON.parse(atob(jwt.split('.')[1] || '')) as JwtPayload; // light client-side decode
+		if (sub) {
+			const userStub = getUserStub(env, sub);
+			await userStub.fetch('https://dummy/add-vote', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ pollId, optionIndex }),
+			});
+		}
+	}
+
 	return { ok: true, updatedPoll };
 }

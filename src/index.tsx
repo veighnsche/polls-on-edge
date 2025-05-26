@@ -23,7 +23,8 @@ import * as pollService from './services/pollService';
 
 import { PollFormSchema, VoteRequestBodySchema, type PollForm } from './types/PollData';
 
-export { PollDurableObject } from './PollDurableObject';
+export { PollDurableObject } from './durable-objects/PollDurableObject';
+export { UserDurableObject } from './durable-objects/UserDurableObject';
 
 // ---------------------------------------------------------------------------
 // Hono context augmentation --------------------------------------------------
@@ -190,17 +191,13 @@ app.post('/api/poll/:pollId/delete', async c => {
 	return c.redirect('/', 303);
 });
 
-app.post('/api/poll/:pollId/vote', zValidator('json', VoteRequestBodySchema), async c => {
+app.post('/poll/:pollId/vote', async c => {
 	const pollId = c.req.param('pollId');
-	const { optionIndex } = c.req.valid('json');
+	const form = await c.req.parseBody?.() || (await c.req.formData?.());
+	const optionIndex = Number(form?.get ? form.get('optionIndex') : form['optionIndex']);
 	const jwt = (c.req as any).cookie ? (c.req as any).cookie('jwt') : undefined;
-	console.log('[ROUTE] JWT string:', jwt);
-	if (!jwt) {
-		return c.json({ error: 'Missing JWT' }, 401);
-	}
-	const result = await pollService.votePoll({ pollId, optionIndex, env: c.env, jwt });
-	if (!result.ok) return c.json({ error: result.error ?? 'Vote failed' }, 500);
-	return c.json(result.updatedPoll);
+	await pollService.votePoll({ pollId, optionIndex, env: c.env, jwt });
+	return c.redirect(`/poll/${pollId}`, 303);
 });
 
 // ---------------------------------------------------------------------------
