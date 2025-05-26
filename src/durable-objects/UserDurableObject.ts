@@ -1,4 +1,3 @@
-import { verify } from 'hono/jwt';
 import { z } from 'zod';
 
 /* ─────────────────────────────── types ─────────────────────────────── */
@@ -10,10 +9,6 @@ export interface UserData {
 
 export interface Env {
 	JWT_SECRET: string;
-}
-
-interface JwtPayload {
-	sub: string;
 }
 
 /* ────────────────────────────── zod schemas ─────────────────────────── */
@@ -40,10 +35,7 @@ const CORS_HEADERS = {
 /* ─────────────────────────── durable object ─────────────────────────── */
 
 export class UserDurableObject {
-	constructor(
-		private state: DurableObjectState,
-		private env: Env,
-	) {}
+	constructor(private state: DurableObjectState) {}
 
 	/* ───────────────────────── helpers ───────────────────────── */
 
@@ -56,16 +48,6 @@ export class UserDurableObject {
 
 	private text(body: string, status = 200) {
 		return new Response(body, { status, headers: CORS_HEADERS });
-	}
-
-	private async getJwt(request: Request): Promise<JwtPayload | null> {
-		const auth = request.headers.get('Authorization');
-		if (!auth?.startsWith('Bearer ')) return null;
-		try {
-			return (await verify(auth.slice(7), this.env.JWT_SECRET)) as JwtPayload;
-		} catch {
-			return null;
-		}
 	}
 
 	/* ───────────────────────── endpoint handler ───────────────────────── */
